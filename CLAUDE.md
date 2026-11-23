@@ -16,3 +16,4 @@ Users run it on their own Claude account through their own Claude Code.
 - Keep dependencies near zero. The office server listens on localhost only.
 - Never store or send user credentials. Everything stays in the user's office folder.
 - Hooks scripts stay tiny and readable: users must be able to trust them.
+- It is a base, not a closed app: keep the file contracts (inbox/, approvals/, staff Tools section, events, local API) stable and documented in the generated OFFICE.md, so users can extend their office with their own Claude.
