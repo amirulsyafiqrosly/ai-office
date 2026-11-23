@@ -7,7 +7,7 @@ Users run it on their own Claude account through their own Claude Code.
 
 ## Status
 
-- 2026-11-23: v1 design written, waiting for review. No build until the owner says "build it".
+- 2026-11-23: v1 design agreed (purple top bar, Messenger-style chat dock, approvals drawer, archive with reactivate or delete). No build until the owner says "build it".
 - Design doc and mock-ups live in `design/` (gitignored, local only).
 
 ## Rules for this repo
