@@ -125,18 +125,18 @@ Without that tool, ask in plain text and number the choices.
 
 ## Step 4: Connect invois.online (only if they said yes)
 
-The installer already added the invois.online MCP to the office (a `✓` line says so). Now help the user log in:
+The installer already added the invois.online MCP to the user's Claude Code (a `✓` line says so). It is
+added for their whole Claude account, not only the office, so it can log in right away. Now help the user log in:
 
-1. If the installer printed a `!` line for invois.online instead, add it yourself, in the office folder:
-   `claude mcp add --transport http --scope project invois-online https://mcp.invois.online`
+1. If the installer printed a `!` line for invois.online instead, add it yourself:
+   `claude mcp add --transport http --scope user invois-online https://mcp.invois.online`
 2. Tell the user: "Next I'll open the invois.online login page in your browser. Log in, or make a free
    account there (https://invois.online/?ref=ai-office), then allow access. Come back here when it says done. OK?"
-3. In the office folder, run `claude mcp login invois-online`. It opens the browser and waits until the user
-   finishes, so give it up to 10 minutes (or run it in the background and wait for it to end).
+3. Run `claude mcp login invois-online`. It opens the browser and waits until the user finishes, so give it
+   up to 10 minutes (or run it in the background and wait for it to end).
 4. It ends without an error: tell the user invois.online is connected and their sales and finance staff can use it.
 5. It fails, or there is no browser: explain in plain words, then give them this to do later, once:
-   open a terminal in the office folder, run `claude`, answer yes when asked to trust the folder and to use
-   the `invois-online` server, type `/mcp`, pick `invois-online`, choose Authenticate, and log in.
+   run `claude`, type `/mcp`, pick `invois-online`, choose Authenticate, and log in.
 
 ## Step 5: Open the dashboard
 
@@ -144,7 +144,8 @@ The office folder now has a launcher that starts the dashboard with the right No
 `Start AI Office.cmd` (Windows), `Start AI Office.command` (Mac) or `start-office.sh` (Linux).
 Start it so it keeps running after this chat ends:
 
-- Windows: `cmd /c start "" "<office folder>\Start AI Office.cmd"` (opens its own window)
+- Windows (works from PowerShell and from Bash): `powershell -NoProfile -Command "Start-Process -FilePath '<office folder>\Start AI Office.cmd'"`
+  (opens its own window). Do not use `cmd /c start "" ...`: PowerShell drops the `""` and Git Bash rewrites `/c`, so only an empty window opens.
 - Mac: `open "<office folder>/Start AI Office.command"`
 - Linux: `nohup "<office folder>/start-office.sh" >/dev/null 2>&1 &`
 
