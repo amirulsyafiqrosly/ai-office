@@ -346,7 +346,11 @@ ${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in t
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="checkbox" name="scarf" ${look.scarf ? 'checked' : ''}> Headscarf</label>
         <div class="swatches" data-pick="skin" style="margin-bottom:6px">${SKINS.map((c) => `<i style="background:${c}" data-v="${c}" class="${c === look.skin ? 'on' : ''}"></i>`).join('')}</div>
         <div class="swatches" data-pick="hair">${HAIRS.map((c) => `<i style="background:${c}" data-v="${c}" class="${c === look.hair ? 'on' : ''}"></i>`).join('')}</div>
-        <label class="lbl">Tools</label><div class="pre" style="padding:0;color:var(--muted)">${esc(s.tools.replace(/<!--[\s\S]*?-->/g, '').trim())}</div>
+        <label class="lbl">Commands ${esc(s.name)} may run</label>
+        <div class="cmdgrid">${(S.presets || []).map((p) => `<label class="cmd"><input type="checkbox" name="cmd" value="${esc(p.id)}" ${(s.commands || []).includes(p.id) ? 'checked' : ''}><span><b>${esc(p.label)}</b><br><span class="faint">${esc(p.about)}</span></span></label>`).join('')}</div>
+        <textarea class="in mono" name="customCommands" rows="2" placeholder="Other commands, one per line, e.g. php vendor/bin/pint" style="margin-top:8px">${esc((s.customCommands || []).join('\n'))}</textarea>
+        <div class="faint" style="font-size:11.5px;margin-top:4px;line-height:1.5">Only in the office folder and linked folders. Never from the dashboard: git push, reset --hard, migrate:fresh, db:wipe, deleting with rm. You run those yourself.</div>
+        <label class="lbl">Tools</label><div class="pre" style="padding:0;color:var(--muted)">${esc(s.tools.replace(/<!--[\s\S]*?-->/g, '').replace(/^- Commands you may run.*$/m, '').trim())}</div>
         <div class="arcnote" style="margin:10px 0 0">${icon('plug')}<div>To give ${esc(s.name)} a new tool (email, WhatsApp, an API), ask Claude in the office folder, for example <i>"let ${esc(s.name)} send WhatsApp messages"</i>.</div></div>
         <label class="lbl">Saved to</label><div class="mono muted">${esc(s.file)}</div>
       </div>
@@ -359,6 +363,7 @@ ${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in t
     $('#sSave').onclick = () => {
       const val = (n) => $(`[name=${n}]`, f).value;
       act(() => api(`staff/${id}`, 'PUT', { name: val('name'), role: val('role'), job: val('job'), rules: val('rules').split('\n'), notes: val('notes'),
+        commands: $$('[name=cmd]:checked', f).map((x) => x.value), customCommands: val('customCommands').split('\n').map((x) => x.trim()).filter(Boolean),
         colour: pick.colour, look: { scarf: $('[name=scarf]', f).checked, skin: pick.skin, hair: pick.hair } }), 'Saved')
         .then(() => { S.dirty.delete('staff'); return refresh(['office', 'staff']); });
     };
@@ -751,7 +756,7 @@ function live() {
 }
 
 (async () => {
-  try { await load(); S.status = await api('status'); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
+  try { await load(); S.status = await api('status'); S.presets = await api('presets'); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
   const run = await api('chats').catch(() => ({ running: [] }));
   run.running.forEach((id) => { chatOf(id).running = true; });
   go(location.hash.slice(1) || 'office');

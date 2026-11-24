@@ -1,0 +1,126 @@
+// AI Office command guard. Claude Code runs this before every shell command (PreToolUse, Bash).
+// It allows only the commands the boss ticked for that staff on the Staff page, run in the
+// office folder or a linked folder. Some commands are always refused: the boss runs those.
+// It decides; it does not run anything and sends nothing anywhere.
+const fs = require('fs');
+const path = require('path');
+
+// Command presets. A command is allowed when it starts with one of "allow" and contains none of "deny".
+const PRESETS = {
+  git: {
+    label: 'Git',
+    about: 'status, diff, log, add, commit, branch, switch, stash, fetch, pull, git rm',
+    allow: ['git status', 'git diff', 'git log', 'git show', 'git add', 'git commit', 'git branch', 'git switch',
+      'git checkout -b', 'git stash', 'git fetch', 'git pull', 'git rm', 'git restore --staged', 'git rev-parse', 'git remote -v'],
+  },
+  laravel: { label: 'Laravel', about: 'php artisan (make, migrate, test, route:list, cache, ...)', allow: ['php artisan', 'php -v', 'php -l'] },
+  node: { label: 'npm', about: 'npm install, npm ci, npm run, npm test', allow: ['npm install', 'npm i ', 'npm ci', 'npm run', 'npm test', 'npm ls', 'npm outdated'] },
+  composer: { label: 'Composer', about: 'composer install, require, update, dump-autoload', allow: ['composer install', 'composer require', 'composer update', 'composer dump-autoload', 'composer show', 'composer outdated', 'composer validate'] },
+};
+// Never, whatever is ticked: these lose work, publish, or open a door. The boss runs them.
+const ALWAYS_DENY = ['git push', 'git reset --hard', 'git clean', 'git rebase', 'git filter-branch', 'git branch -D', 'git checkout --', 'git restore .',
+  'php artisan migrate:fresh', 'php artisan migrate:reset', 'php artisan migrate:refresh', 'php artisan db:wipe', 'php artisan tinker', 'php artisan down',
+  'npm publish', 'composer remove', 'rm ', 'sudo', 'curl', 'wget', 'ssh', 'scp'];
+
+const starts = (cmd, prefix) => cmd === prefix.trim() || cmd.startsWith(prefix.endsWith(' ') ? prefix : `${prefix} `) || cmd.startsWith(`${prefix}\t`);
+
+// Turn a path as Claude writes it (quotes, Git Bash /c/..., ~) into a real absolute path.
+function realPath(p, cwd, win) {
+  let x = p.replace(/^["']|["']$/g, '');
+  if (win && /^\/[a-zA-Z]\//.test(x)) x = `${x[1]}:${x.slice(2)}`;
+  if (x.startsWith('~')) return null; // home folder shortcuts are never needed here
+  return (win ? path.win32 : path.posix).resolve(cwd || '.', x);
+}
+
+// Split "cd X && git add a && git commit -m '...'" into its commands, reading quotes like the shell does.
+// Outside quotes only plain words and && are allowed (plus a trailing 2>&1); inside double quotes no
+// $ or backtick (they run code); inside single quotes anything. Returns a list of commands, or null.
+function splitCommand(cmd) {
+  const parts = []; let cur = '', q = null;
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q === "'") { cur += c; if (c === "'") q = null; continue; }
+    if (q === '"') { if (c === '$' || c === '`') return null; cur += c; if (c === '\\' && i + 1 < cmd.length) cur += cmd[++i]; else if (c === '"') q = null; continue; }
+    if (c === "'" || c === '"') { q = c; cur += c; continue; }
+    if (c === '&' && cmd[i + 1] === '&') { parts.push(cur.trim()); cur = ''; i++; continue; }
+    if (cmd.startsWith('2>&1', i) && /^\s*($|&&)/.test(cmd.slice(i + 4))) { i += 3; continue; } // show errors too: harmless
+    if (/[\n\r;|`$<>&]/.test(c) || (c === '\\' && /[\n\r]/.test(cmd[i + 1] || ''))) return null;
+    cur += c;
+  }
+  if (q) return null;
+  parts.push(cur.trim());
+  return parts.some((x) => !x) ? null : parts;
+}
+const firstWord = (s) => { const m = /^("[^"]*"|'[^']*'|\S+)\s*([\s\S]*)$/.exec(s); return m ? [m[1], m[2]] : [s, '']; };
+
+// input: Claude Code's hook input. office: office.json plus { dir, linked: [paths] }.
+// Returns { decision: 'allow' | 'deny' | null, reason }.
+function decide(input, office, opts = {}) {
+  const win = opts.win ?? process.platform === 'win32';
+  const P = win ? path.win32 : path.posix;
+  const cmd = String((input.tool_input || {}).command || '').trim();
+  const staffId = input.agent_type || ((P.relative(office.dir, input.cwd || office.dir).split(/[\\/]/)[0] === 'staff') ? P.relative(office.dir, input.cwd).split(/[\\/]/)[1] : '');
+  const staff = (office.staff || []).find((s) => s.id === staffId);
+  const name = staff ? staff.name : 'The PA';
+  const no = (reason) => ({ decision: opts.chat ? 'deny' : null, reason });
+
+  // one plain command, or "cd <folder> && command && command" - nothing else
+  const parts = cmd ? splitCommand(cmd) : null;
+  if (!parts) return no('Only plain commands can run here (no ; | $ ` > < & or similar outside quotes).');
+  for (const p of parts) for (const d of ALWAYS_DENY) if (starts(p, d.trim())) {
+    // in the terminal the boss is there to say yes or no himself
+    return opts.chat ? { decision: 'deny', reason: `"${d.trim()}" is never run from the dashboard. The boss runs it in a terminal (or asks for it in Needs your OK).` } : { decision: null };
+  }
+  if (!staff) return no(`${name} does not run commands. Hand it to a staff who has commands turned on (Staff page).`);
+  const allowed = [...(staff.commands || []).flatMap((k) => (PRESETS[k] ? PRESETS[k].allow : [])), ...(staff.customCommands || [])];
+  if (!allowed.length) return no(`${name} has no commands turned on. The boss can tick them on the Staff page.`);
+
+  const norm = (d) => (win ? P.resolve(d).toLowerCase() : P.resolve(d)); // Windows paths ignore case
+  const places = [office.dir, ...(office.linked || [])].map(norm);
+  const inside = (d) => { if (!d) return false; const x = norm(d); return places.some((pl) => x === pl || x.startsWith(pl + P.sep)); };
+  const elsewhere = no(`${name} may only work in the office folder or a linked folder.`);
+  let i = 0;
+  if (/^cd\s/.test(parts[0])) {
+    const [dirArg, rest] = firstWord(parts[0].slice(3).trim());
+    if (rest || !inside(realPath(dirArg, input.cwd || office.dir, win))) return elsewhere;
+    i = 1;
+  }
+  if (i >= parts.length) return { decision: 'allow', reason: 'change folder' };
+  for (let p of parts.slice(i)) {
+    if (/^cd\s/.test(p)) return no('Use one cd at the start, then the commands.');
+    const gc = /^git\s+-C\s+([\s\S]*)$/.exec(p); // git -C "<folder>" <command>
+    if (gc) {
+      const [dirArg, rest] = firstWord(gc[1]);
+      if (!inside(realPath(dirArg, input.cwd || office.dir, win))) return elsewhere;
+      p = `git ${rest}`;
+      for (const d of ALWAYS_DENY) if (starts(p, d.trim())) return opts.chat ? { decision: 'deny', reason: `"${d.trim()}" is never run from the dashboard. The boss runs it in a terminal.` } : { decision: null };
+    }
+    if (!allowed.some((a) => starts(p, a))) return no(`"${p.split(/\s+/).slice(0, 3).join(' ')}" is not on ${name}'s allowed commands. The boss can add it on the Staff page.`);
+  }
+  return { decision: 'allow', reason: `on ${name}'s allowed commands` };
+}
+
+module.exports = { PRESETS, ALWAYS_DENY, decide };
+
+if (require.main === module) {
+  let raw = '';
+  process.stdin.on('data', (d) => { raw += d; });
+  process.stdin.on('end', () => {
+    let input, office;
+    try { input = JSON.parse(raw); } catch { return; }
+    if (input.tool_name !== 'Bash') return;
+    const dir = path.dirname(__dirname);
+    try { office = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')); } catch { return; }
+    // linked folders: office-wide, plus each project's "linked:" line
+    const linked = (office.linked || []).map((l) => l.path);
+    try {
+      for (const p of fs.readdirSync(path.join(dir, 'projects'))) {
+        const m = /^linked:\s*(.+?)\s*(?:\s#\s.*)?$/m.exec(fs.readFileSync(path.join(dir, 'projects', p, 'CLAUDE.md'), 'utf8'));
+        if (m) linked.push(m[1]);
+      }
+    } catch { /* no projects */ }
+    const r = decide(input, { ...office, dir, linked }, { chat: process.env.AI_OFFICE_CHAT === '1' });
+    if (!r.decision) return; // terminal: Claude Code asks the boss as usual
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
+  });
+}

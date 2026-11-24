@@ -146,6 +146,21 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       assert.ok(T.officeRules(dir).every((x) => allow().includes(x)), 'office rules stay');
     });
 
+    await test('staff commands: saved, shell tool only while on, Tools line kept in step', async () => {
+      const r = await req('PUT', '/api/staff/aina', { commands: ['git', 'nope'], customCommands: ['php vendor/bin/pint'] });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+      assert.deepStrictEqual(r.body.commands, ['git']);
+      assert.match(read('.claude/agents/aina.md'), /^tools: Read, Write, Edit, Glob, Grep, Bash$/m);
+      assert.match(read('staff/aina/CLAUDE.md'), /^- Commands you may run, in the office or a linked folder: Git \(.*\); `php vendor\/bin\/pint`\./m);
+      assert.strictEqual((await req('PUT', '/api/staff/aina', { customCommands: ['ls; rm -rf /'] })).status, 400);
+      await req('PUT', '/api/staff/aina', { commands: [], customCommands: [] });
+      assert.doesNotMatch(read('.claude/agents/aina.md'), /Bash/);
+      assert.doesNotMatch(read('staff/aina/CLAUDE.md'), /Commands you may run/);
+      const settings = JSON.parse(read('staff/aina/.claude/settings.json'));
+      assert.ok(settings.hooks.PreToolUse.some((e) => e.matcher === 'Bash' && /guard\.js"$/.test(e.hooks[0].command)), 'guard hook registered');
+      assert.ok(fs.existsSync(path.join(dir, '.office/guard.js')));
+    });
+
     await test('live stream says what changed', async () => {
       await new Promise((r) => setTimeout(r, 400)); // let earlier changes settle
       const got = await new Promise((resolve, reject) => {

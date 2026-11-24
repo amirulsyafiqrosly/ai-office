@@ -281,3 +281,8 @@ body.ok-open #wins{right:456px}
 .bm .copy:hover{background:rgba(255,255,255,.28)}
 .wnew{align-self:stretch;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--faint)}
 .wnew:before,.wnew:after{content:"";flex:1;height:1px;background:var(--line)}
+
+.cmdgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.cmd{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line2);border-radius:var(--rs);padding:6px 8px;line-height:1.4;font-size:12px;cursor:pointer}
+.cmd input{margin-top:2px}
+.cmd b{font-weight:600}

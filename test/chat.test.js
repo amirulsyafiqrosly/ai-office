@@ -113,6 +113,16 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.ok(c.args[c.args.indexOf('--append-system-prompt') + 1].includes(ext));
   });
 
+  await test('chat env drops the parent Claude session, keeps the user settings', async () => {
+    const { chatEnv } = require('../lib/chat');
+    Object.assign(process.env, { CLAUDECODE: '1', CLAUDE_CODE_SESSION_ID: 'x', CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CONFIG_DIR: '/cfg', CLAUDE_CODE_GIT_BASH_PATH: 'C:/git/bash.exe' });
+    const e = chatEnv('/office');
+    assert.ok(!('CLAUDECODE' in e) && !('CLAUDE_CODE_SESSION_ID' in e) && !('CLAUDE_CODE_CHILD_SESSION' in e));
+    assert.strictEqual(e.CLAUDE_CONFIG_DIR, '/cfg'); assert.strictEqual(e.CLAUDE_CODE_GIT_BASH_PATH, 'C:/git/bash.exe');
+    assert.strictEqual(e.PWD, '/office'); assert.strictEqual(e.AI_OFFICE_CHAT, '1');
+    for (const k of ['CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_GIT_BASH_PATH']) delete process.env[k];
+  });
+
   await test('new conversation forgets the session but keeps the history', async () => {
     const before = chats.history('pa').messages.length;
     chats.reset('pa');

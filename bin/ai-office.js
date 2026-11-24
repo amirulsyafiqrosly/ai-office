@@ -47,7 +47,7 @@ const here = path.resolve(value('--dir') || '.');
 
 (async () => {
   if (G.isOffice(here)) {
-    const fixed = G.repairSettings(here);
+    const fixed = [...G.refreshScripts(here), ...G.repairSettings(here)];
     const l = G.writeLauncher(here); if (l) fixed.push(l);
     if (fixed.length) console.log(`Updated office paths in: ${fixed.join(', ')}`);
     const { start } = require('../lib/server');
