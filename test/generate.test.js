@@ -108,7 +108,7 @@ test('launcher: written once, refreshed only when it is ours', () => {
   assert.strictEqual(G.writeLauncher(moved), null, 'user file kept');
   assert.strictEqual(read(f), 'my own script');
   const win = T.launcher('C:\\Users\\Ali\\.ai-office\\node\\node.exe', 'win32');
-  assert.strictEqual(win.name, 'Start AI Office.cmd'); assert.match(win.text, /\r\ncd \/d "%~dp0"\r\n/);
+  assert.strictEqual(win.name, 'Start AI Office.cmd'); assert.match(win.text, /\r\ncd \/d "%~dp0"\r\n/); assert.match(win.text, /set "PATH=C:\\Users\\Ali\\.ai-office\\node;%PATH%"/);
 });
 
 test('hook.js appends one trimmed line per event', () => {
