@@ -95,6 +95,17 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.strictEqual(last.kind, 'error'); assert.match(last.text, /usage limit is reached/);
   });
 
+  await test('new conversation forgets the session but keeps the history', async () => {
+    const before = chats.history('pa').messages.length;
+    chats.reset('pa');
+    assert.ok(!chats.sessions().pa);
+    const h = chats.history('pa').messages;
+    assert.strictEqual(h.length, before + 1); assert.strictEqual(h.pop().kind, 'new');
+    chats.send('pa', 'hello again');
+    await idle('pa');
+    assert.ok(!calls().pop().args.includes('--resume'), 'fresh start');
+  });
+
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`\n${n} chat tests passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -110,6 +110,20 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       assert.strictEqual(ev.ev, 'Approval'); assert.match(ev.msg, /approved/);
     });
 
+    await test('clean up: needs CLEAR, clears only what was picked, never the staff setup', async () => {
+      fs.writeFileSync(path.join(dir, 'staff/siti/quote.md'), 'x');
+      fs.appendFileSync(path.join(dir, '.office/events.jsonl'), '{"ev":"Stop"}\n');
+      assert.strictEqual((await req('POST', '/api/cleanup', { items: ['inbox'], confirm: 'yes' })).status, 400);
+      const r = await req('POST', '/api/cleanup', { items: ['activity', 'inbox', 'staffFiles', 'nonsense'], confirm: 'CLEAR' });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+      assert.strictEqual(fs.readdirSync(path.join(dir, 'inbox')).length, 0);
+      assert.strictEqual(read('.office/events.jsonl'), '');
+      assert.ok(!fs.existsSync(path.join(dir, 'staff/siti/quote.md')));
+      assert.ok(fs.existsSync(path.join(dir, 'staff/siti/CLAUDE.md')) && fs.existsSync(path.join(dir, 'staff/siti/.claude/settings.json')));
+      assert.ok(fs.readdirSync(path.join(dir, 'approvals')).length > 0, 'approvals not picked, so kept');
+      assert.ok(fs.existsSync(path.join(dir, 'office.json')) && fs.existsSync(path.join(dir, '.claude/agents/siti.md')));
+    });
+
     await test('live stream says what changed', async () => {
       await new Promise((r) => setTimeout(r, 400)); // let earlier changes settle
       const got = await new Promise((resolve, reject) => {

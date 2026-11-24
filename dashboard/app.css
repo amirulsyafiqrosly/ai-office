@@ -274,3 +274,10 @@ body.ok-open #wins{right:456px}
 .wf .send{height:26px;width:28px;padding:0;justify-content:center}
 .wf .cc{font-size:10.5px;color:var(--faint);margin-top:5px;display:flex;align-items:center;gap:4px}
 .wf .cc svg.ic{width:11px;height:11px}
+.bm .code{position:relative;margin:4px 0 6px}
+.bm pre{background:#1B1D29;color:#F3F2EE;border-radius:var(--rs);padding:24px 10px 8px;overflow:auto;font-size:11.5px;line-height:1.5;white-space:pre}
+.bm pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.bm .copy{position:absolute;top:4px;right:4px;font-size:10.5px;font-weight:600;color:#fff;background:rgba(255,255,255,.14);border-radius:3px;padding:1px 7px}
+.bm .copy:hover{background:rgba(255,255,255,.28)}
+.wnew{align-self:stretch;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--faint)}
+.wnew:before,.wnew:after{content:"";flex:1;height:1px;background:var(--line)}

@@ -1,5 +1,7 @@
 // Small, safe Markdown for chat replies: text is escaped first, then a few
 // patterns are turned into HTML (bold, code, links, lists, tables, headings).
+// Fenced code blocks (```) are shown exactly as written, with a Copy button:
+// commands must never be changed (a PowerShell `n is a newline, not code).
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -11,7 +13,18 @@ function inline(s) {
 }
 
 export function markdown(text) {
-  const lines = esc(text).replace(/\r/g, '').split('\n');
+  // cut out fenced code blocks first, so nothing inside them is touched
+  const blocks = [];
+  const src = String(text ?? '').replace(/\r/g, '').replace(/^[ \t]*```[^\n`]*\n([\s\S]*?)^[ \t]*```[ \t]*$/gm, (m, code) => {
+    blocks.push(code.replace(/\n$/, ''));
+    return `\u0000CODE${blocks.length - 1}\u0000`;
+  });
+  const html = renderLines(src);
+  return html.replace(/(?:<p>)?\u0000CODE(\d+)\u0000(?:<\/p>)?/g, (m, i) => `<div class="code"><button class="copy" data-copy title="Copy">Copy</button><pre><code>${esc(blocks[Number(i)])}</code></pre></div>`);
+}
+
+function renderLines(srcText) {
+  const lines = esc(srcText).split('\n');
   const out = [];
   let i = 0;
   const isRow = (l) => /^\s*\|.*\|\s*$/.test(l || '');

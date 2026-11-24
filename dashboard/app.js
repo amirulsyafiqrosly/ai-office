@@ -517,7 +517,16 @@ function renderInboxSide() {
 
 // ------------------------------------------------------------------ settings
 function renderSettings() {
-  const nav = [['general', 'info', 'General'], ['addons', 'plug', 'Add-ons'], ['api', 'file-text', 'Office key and API']];
+  const nav = [['general', 'info', 'General'], ['addons', 'plug', 'Add-ons'], ['api', 'file-text', 'Office key and API'], ['cleanup', 'trash-2', 'Clean up']];
+  const CLEAN = [
+    ['activity', true, 'Live activity log', 'Who worked on what (.office/events.jsonl). The office starts quiet again.'],
+    ['chats', true, 'Dashboard chats', 'All chat windows and their Claude conversations (.office/chats/). Everyone starts fresh.'],
+    ['summaries', true, `Staff chat summaries for ${pa().name}`, '.office/staff-chats.md is reset to empty.'],
+    ['inbox', false, 'Inbox items', 'Every customer request in inbox/.'],
+    ['approvals', false, 'Approvals', 'Waiting and decided approvals in approvals/.'],
+    ['projects', false, 'Projects', 'Every project folder in projects/, with its files and notes.'],
+    ['staffFiles', false, 'Staff work files', "Files staff made in their folders (quotes, drafts, price lists). Their job description and rules stay."],
+  ];
   const inv = (S.office.addons || {})['invois-online'];
   const body = {
     general: `<h3 style="margin-bottom:12px">General</h3><div class="kv">
@@ -538,12 +547,26 @@ function renderSettings() {
   -H "X-Office-Key: &lt;office key&gt;" -H "Content-Type: application/json" \\
   -d '{"from":"Kedai Ali","source":"webhook","type":"order","text":"50 t-shirts, size L"}'</div>
       <p class="muted" style="margin-top:12px">All calls are listed in OFFICE.md. Keep the key secret.</p>`,
+    cleanup: `<h3 style="margin-bottom:6px">Clean up</h3>
+      <p class="muted" style="line-height:1.6;margin-bottom:14px">Clear test or old data. Your team stays as it is: ${esc(pa().name)}'s instructions, every staff's job, rules and settings, and office.json are never touched.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;max-width:640px">${CLEAN.map(([k, on, l, d]) => `<label style="display:flex;gap:10px;align-items:flex-start;line-height:1.45"><input type="checkbox" name="cl" value="${k}" ${on ? 'checked' : ''} style="margin-top:3px"><span><b style="font-weight:600">${esc(l)}</b><br><span class="muted">${esc(d)}</span></span></label>`).join('')}</div>
+      <div class="arcnote" style="margin:16px 0 0;max-width:640px">${icon('circle-alert')}<div>Cleared files cannot be brought back. Tip: copy the office folder first if you might need them.</div></div>
+      <label class="lbl">Type <b>CLEAR</b> to confirm</label>
+      <div style="display:flex;gap:8px;max-width:640px"><input class="in" id="clConf" autocomplete="off" style="max-width:200px"><button class="btn dangerSolid" id="clGo" disabled>${icon('trash-2')}Clear selected</button></div>`,
   };
   $('#v-settings').innerHTML = `<div class="split"><div class="pane" style="flex:0 0 220px"><div class="pb" style="padding:8px">${nav.map(([k, ic, l]) => `<button class="snav ${S.settings === k ? 'on' : ''}" data-s="${k}">${icon(ic)}${l}</button>`).join('')}</div></div>
     <div class="gutter" data-side="prev" data-key="settings"></div><div class="pane" style="flex:1 1 auto"><div class="pb" style="padding:20px 24px;max-width:900px">${body[S.settings]}</div></div></div>`;
   wireSplits($('#v-settings'));
   $$('[data-s]').forEach((b) => { b.onclick = () => { S.settings = b.dataset.s; renderSettings(); }; });
   const ks = $('#keyShow'); if (ks) ks.onclick = () => { $('#keyV').textContent = KEY; ks.remove(); };
+  const cg = $('#clGo');
+  if (cg) {
+    $('#clConf').oninput = (e) => { cg.disabled = e.target.value !== 'CLEAR'; };
+    cg.onclick = () => {
+      const items = $$('[name=cl]:checked').map((x) => x.value);
+      act(() => api('cleanup', 'POST', { items, confirm: $('#clConf').value }), 'Cleared').then(() => { $('#clConf').value = ''; cg.disabled = true; });
+    };
+  }
 }
 
 
@@ -580,6 +603,7 @@ function msgHtml(id, m) {
   if (m.from === 'boss') return `<div class="bm me">${esc(m.text)}<span class="t">${time}</span></div>`;
   if (m.from === 'system') {
     if (m.kind === 'error') return `<div class="wact err">${icon('circle-alert')}${esc(m.text)}</div>`;
+    if (m.kind === 'new') return `<div class="wnew">${esc(m.text)}${time ? `, ${time}` : ''}</div>`;
     return `<div class="wact">${icon(m.done ? 'check' : 'chevron-right')}${esc(m.text)}</div>`;
   }
   return `<div class="bm">${markdown(m.text)}<span class="t">${time}</span></div>`;
@@ -618,7 +642,7 @@ function renderChats() {
     const p = personOf(id), c = chatOf(id);
     const st = c.running ? 'working' : ((S.status.people[id] || {}).status || 'sleeping');
     w.classList.toggle('min', V.min.includes(id));
-    $('.wh', w).innerHTML = `${av(p)}<b>${esc(p.name)}</b>${id === 'pa' ? MGR : ''}<span class="badge ${st}" style="height:18px;font-size:11px"><i class="d ${st}"></i>${SLAB[st]}</span><div class="acts"><button class="ibtn" data-min="${esc(id)}" title="Minimise">${icon('minus')}</button><button class="ibtn" data-close="${esc(id)}" title="Close">${icon('x')}</button></div>`;
+    $('.wh', w).innerHTML = `${av(p)}<b>${esc(p.name)}</b>${id === 'pa' ? MGR : ''}<span class="badge ${st}" style="height:18px;font-size:11px"><i class="d ${st}"></i>${SLAB[st]}</span><div class="acts"><button class="ibtn" data-newchat="${esc(id)}" title="New conversation (${esc(p.name)} starts fresh; this chat stays above)">${icon('refresh-cw')}</button><button class="ibtn" data-min="${esc(id)}" title="Minimise">${icon('minus')}</button><button class="ibtn" data-close="${esc(id)}" title="Close">${icon('x')}</button></div>`;
     const waits = id === 'pa' ? [] : pendingOks().filter((a) => a.from === id);
     $('.wstrips', w).innerHTML = waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
     const body = $('.wb', w);
@@ -632,12 +656,18 @@ function renderChats() {
 }
 
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-chat],[data-close],[data-min],[data-stop],[data-ask]');
+  const t = e.target.closest('[data-chat],[data-close],[data-min],[data-stop],[data-ask],[data-newchat],[data-copy]');
   if (!t) return;
   if (t.dataset.chat) { const id = t.dataset.chat; if (V.open[0] === id && !V.min.includes(id)) closeChat(id); else openChat(id); }
   else if (t.dataset.close) { e.stopPropagation(); closeChat(t.dataset.close); }
   else if (t.dataset.min) { e.stopPropagation(); toggleMin(t.dataset.min); }
   else if (t.dataset.stop) api(`chat/${t.dataset.stop}/stop`, 'POST').catch((er) => toast(er.message, true));
+  else if (t.dataset.newchat) { e.stopPropagation(); api(`chat/${t.dataset.newchat}/new`, 'POST').then(() => toast('New conversation started'), (er) => toast(er.message, true)); }
+  else if (t.hasAttribute('data-copy')) {
+    const code = t.parentElement.querySelector('code').textContent;
+    const done = () => { t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy'; }, 1500); };
+    if (navigator.clipboard) navigator.clipboard.writeText(code).then(done, () => toast('Could not copy. Select the text instead.', true));
+  }
   else if (t.dataset.ask) { const a = S.approvals.find((x) => x.id === t.dataset.ask); if (a) openChat(a.from, `About "${a.action}": `); }
 });
 window.addEventListener('resize', () => renderChats());
@@ -680,6 +710,15 @@ function live() {
     const visible = V.open.slice(0, 8).includes(id) && !V.min.includes(id);
     if (!visible && msg.from !== 'boss') c.unread++;
     renderChats();
+  });
+  es.addEventListener('cleared', () => {
+    for (const k of Object.keys(C)) delete C[k];
+    prevPeople = null;
+    load().then(async () => {
+      S.status = await api('status');
+      await Promise.all(V.open.map(async (id) => { if (!personOf(id)) return; const h = await api(`chat/${id}`).catch(() => null); if (h) Object.assign(chatOf(id), { messages: h.messages, running: h.running, loaded: true }); }));
+      render();
+    });
   });
   es.addEventListener('chatstate', (e) => { const { id, running } = JSON.parse(e.data); chatOf(id).running = running; renderChats(); });
   es.addEventListener('changed', (e) => {
