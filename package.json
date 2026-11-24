@@ -13,12 +13,13 @@
   "files": [
     "bin/",
     "lib/",
-    "office-files/"
+    "office-files/",
+    "dashboard/"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "test": "node test/generate.test.js"
+    "test": "node test/generate.test.js && node test/server.test.js"
   }
 }

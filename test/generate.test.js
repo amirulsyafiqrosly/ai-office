@@ -95,6 +95,22 @@ test('answers file: defaults fill gaps, errors are plain', () => {
   assert.strictEqual(r.status, 1); assert.match(r.stdout, /needs a role/);
 });
 
+test('launcher: written once, refreshed only when it is ours', () => {
+  const moved = path.join(tmp, 'moved');
+  const name = T.launcher(process.execPath).name;
+  const f = path.join(moved, name);
+  assert.ok(fs.existsSync(f), 'setup wrote it');
+  fs.rmSync(f);
+  assert.strictEqual(G.writeLauncher(moved), name, 'first write');
+  assert.match(read(f), /AI Office launcher/); assert.match(read(f), /github:epool86\/ai-office/);
+  assert.strictEqual(G.writeLauncher(moved), null, 'unchanged');
+  fs.writeFileSync(f, 'my own script');
+  assert.strictEqual(G.writeLauncher(moved), null, 'user file kept');
+  assert.strictEqual(read(f), 'my own script');
+  const win = T.launcher('C:\\Users\\Ali\\.ai-office\\node\\node.exe', 'win32');
+  assert.strictEqual(win.name, 'Start AI Office.cmd'); assert.match(win.text, /\r\ncd \/d "%~dp0"\r\n/);
+});
+
 test('hook.js appends one trimmed line per event', () => {
   const moved = path.join(tmp, 'moved');
   const input = { hook_event_name: 'PreToolUse', session_id: 's1', agent_id: 'a1', agent_type: 'siti', tool_name: 'Agent',

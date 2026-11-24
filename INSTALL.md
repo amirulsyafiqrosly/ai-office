@@ -93,18 +93,29 @@ Change only what the user asks to change. A new staff needs a name, a role, and 
 3. Lines starting with `✓` went well. A line starting with `✗` says what is wrong: fix it (for example pick another
    folder) and run again. Delete the answers file when done.
 
-## Step 4: Tell the user what they have
+## Step 4: Open the dashboard
+
+The office folder now has a launcher that starts the dashboard with the right Node:
+`Start AI Office.cmd` (Windows), `Start AI Office.command` (Mac) or `start-office.sh` (Linux).
+Start it so it keeps running after this chat ends:
+
+- Windows: `cmd /c start "" "<office folder>\Start AI Office.cmd"` (opens its own window)
+- Mac: `open "<office folder>/Start AI Office.command"`
+- Linux: `nohup "<office folder>/start-office.sh" >/dev/null 2>&1 &`
+
+It opens http://localhost:4747 in the browser (or the next free port; it prints the address).
+
+## Step 5: Tell the user what they have
 
 In a few short lines:
 
-- Where the office folder is, and that Hana and the staff are ready.
-- How to use it: open a terminal in the office folder and run `claude`. The first time, Claude Code asks
+- Where the office folder is, and that Hana and the staff are ready. The dashboard is open in their browser.
+- Next time: double-click **Start AI Office** in the office folder. Keep its window open while using the dashboard.
+- To give Hana work: open a terminal in the office folder and run `claude`. The first time, Claude Code asks
   "Do you trust this folder?": answer yes. Then just tell Hana what you need, in your own words.
 - Offer to open the office folder in their file manager.
 - If they said yes to Invois Online: to connect it, run `claude` in the office folder, type `/mcp`, pick
   `invois-online`, and log in in the browser. Free account: https://invois.online/?ref=ai-office
-
 - Do not mention PATH or Node to the user unless they ask: the office already knows where its Node is.
 
-The dashboard arrives in a later version, so do not try to start it yet. Do not start any other web server.
-Do not change anything outside the office folder and `~/.ai-office/`.
+Do not start any other web server. Do not change anything outside the office folder and `~/.ai-office/`.

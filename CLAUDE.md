@@ -10,6 +10,7 @@ Users run it on their own Claude account through their own Claude Code.
 - 2026-11-23: v1 design agreed (purple top bar, Messenger-style chat dock, approvals drawer, archive with reactivate or delete). No build until the owner says "build it".
 - 2026-11-24: design tweaks agreed. Approvals button floats top right of the Office view only (not in the top bar). Hana = PA = manager (one role, oversees all work), shown with a black Manager badge. Office: glass Boss Room, Hana's desk outside it, Customer Service (Aina) and the queue outside on the pavement. First load: 140% zoom, only Hana's chat; view remembered per tab until a hard refresh.
 - 2026-11-24: owner said "build it". Milestone 1 (tests) done: docs/milestone-1-findings.md. Milestone 2 (wizard + folder generator) done: bin/, lib/, office-files/, npm test.
+- 2026-11-24: install is Claude-first (INSTALL.md, private Node in ~/.ai-office/node, --answers), file tools pre-allowed inside the office. Milestone 3 (server + dashboard: Staff, Projects, Inbox, Needs your OK, Settings, live refresh, Start AI Office launcher) done: lib/server.js, lib/office.js, dashboard/.
 - Design doc and mock-ups live in `design/` (gitignored, local only).
 
 ## Rules for this repo

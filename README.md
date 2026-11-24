@@ -3,9 +3,9 @@
 Your own AI office staff, run with Claude Code on your own Claude account.
 
 A PA (Hana) takes your requests and hands them to your AI staff (support, sales, finance, tech).
-A live dashboard (coming soon) shows an isometric office: who is working, who is sleeping, what needs your OK.
+A dashboard in your browser shows your team, projects, inbox and what needs your OK. (The live 3D office is coming next.)
 
-Status: in development. The setup works; the dashboard is next. Not ready for general use yet.
+Status: in development. Setup and dashboard work; the live office and chat are next. Not ready for general use yet.
 
 ## Install (let Claude do it)
 
@@ -16,7 +16,8 @@ Install AI Office for me: https://raw.githubusercontent.com/epool86/ai-office/ma
 ```
 
 Claude finds or installs what is needed (Node.js), asks you a few questions (company name, your staff),
-and sets up your office folder. You only answer and say OK.
+sets up your office folder and opens the dashboard. You only answer and say OK.
+Next time, double-click **Start AI Office** in your office folder.
 
 ## Install (terminal)
 
@@ -26,7 +27,7 @@ With Node.js 18 or newer:
 npx github:epool86/ai-office
 ```
 
-Press Enter to keep each default. Then `cd` into the new folder and run `claude` to talk to Hana.
+Press Enter to keep each default. The dashboard opens when it is done. To talk to Hana, `cd` into the new folder and run `claude`.
 
 ## What you get
 
