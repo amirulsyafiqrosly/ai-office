@@ -124,6 +124,28 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       assert.ok(fs.existsSync(path.join(dir, 'office.json')) && fs.existsSync(path.join(dir, '.claude/agents/siti.md')));
     });
 
+    await test('linked folders: checked, saved, put in the terminal settings, removed again', async () => {
+      const ext = path.join(tmp, 'shop website'); fs.mkdirSync(ext);
+      assert.match((await req('POST', '/api/linked', { path: 'relative/dir' })).body.error, /full folder path/);
+      assert.match((await req('POST', '/api/linked', { path: path.join(tmp, 'nope') })).body.error, /does not exist/);
+      assert.match((await req('POST', '/api/linked', { path: os.homedir() })).body.error, /too wide/);
+      assert.match((await req('POST', '/api/linked', { path: tmp })).body.error, /contains the office/);
+      const r = await req('POST', '/api/linked', { path: ext, label: 'Website' });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+      assert.deepStrictEqual(r.body.map((l) => [l.label, l.ok]), [['Website', true]]);
+      const T = require('../lib/templates');
+      const allow = () => JSON.parse(read('staff/siti/.claude/settings.json')).permissions.allow;
+      assert.ok(T.officeRules(ext).every((x) => allow().includes(x)), 'staff terminal settings allow the linked folder');
+      // a project's own linked folder
+      const pr = await req('PUT', '/api/projects/kedai-ali-website', { linked: ext });
+      assert.strictEqual(pr.body.linked, ext);
+      await req('PUT', '/api/projects/kedai-ali-website', { linked: '' });
+      const after = await req('POST', '/api/linked/remove', { path: ext });
+      assert.deepStrictEqual(after.body, []);
+      assert.ok(!T.officeRules(ext).some((x) => allow().includes(x)), 'unlinked folder rules are gone');
+      assert.ok(T.officeRules(dir).every((x) => allow().includes(x)), 'office rules stay');
+    });
+
     await test('live stream says what changed', async () => {
       await new Promise((r) => setTimeout(r, 400)); // let earlier changes settle
       const got = await new Promise((resolve, reject) => {

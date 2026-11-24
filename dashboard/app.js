@@ -424,6 +424,8 @@ function renderProjects() {
         <div class="grid2"><div><label class="lbl">Status</label><select class="in" name="status">${Object.entries(PSTAT).map(([k, l]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div><label class="lbl">Deadline</label><input class="in" name="deadline" type="date" value="${esc(/^\d{4}-\d{2}-\d{2}$/.test(p.deadline) ? p.deadline : '')}"></div></div>
         <label class="lbl">Customer</label><input class="in" name="customer" value="${esc(p.customer)}">
+        <label class="lbl">Linked folder (optional)</label><input class="in mono" name="linked" value="${esc(p.linked)}" placeholder="D:\\Kedai Ali\\website">
+        <div class="faint" style="font-size:11.5px;margin-top:4px;line-height:1.5">A folder outside the office where this project's files live. Staff may work there. Paste its full path (in File Explorer, click the address bar and copy).</div>
         <label class="lbl">Files</label>${p.files.length ? `<div class="mono muted" style="line-height:1.7">${p.files.map(esc).join('<br>')}</div>` : '<div class="muted">No files yet.</div>'}
         <label class="lbl">Folder</label><div class="mono muted">${esc(p.folder)}</div>
       </div>
@@ -431,7 +433,7 @@ function renderProjects() {
     $('#pf').oninput = () => S.dirty.add('project');
     $('#pSave').onclick = () => {
       const val = (n) => $(`#pf [name=${n}]`).value;
-      act(() => api(`projects/${p.id}`, 'PUT', { status: val('status'), deadline: val('deadline'), customer: val('customer') }), 'Saved')
+      act(() => api(`projects/${p.id}`, 'PUT', { status: val('status'), deadline: val('deadline'), customer: val('customer'), linked: val('linked') }), 'Saved')
         .then((np) => { S.dirty.delete('project'); S.project = np; return refresh(['projects']); });
     };
   }
@@ -517,7 +519,7 @@ function renderInboxSide() {
 
 // ------------------------------------------------------------------ settings
 function renderSettings() {
-  const nav = [['general', 'info', 'General'], ['addons', 'plug', 'Add-ons'], ['api', 'file-text', 'Office key and API'], ['cleanup', 'trash-2', 'Clean up']];
+  const nav = [['general', 'info', 'General'], ['addons', 'plug', 'Add-ons'], ['api', 'file-text', 'Office key and API'], ['linked', 'folder-open', 'Linked folders'], ['cleanup', 'trash-2', 'Clean up']];
   const CLEAN = [
     ['activity', true, 'Live activity log', 'Who worked on what (.office/events.jsonl). The office starts quiet again.'],
     ['chats', true, 'Dashboard chats', 'All chat windows and their Claude conversations (.office/chats/). Everyone starts fresh.'],
@@ -547,6 +549,14 @@ function renderSettings() {
   -H "X-Office-Key: &lt;office key&gt;" -H "Content-Type: application/json" \\
   -d '{"from":"Kedai Ali","source":"webhook","type":"order","text":"50 t-shirts, size L"}'</div>
       <p class="muted" style="margin-top:12px">All calls are listed in OFFICE.md. Keep the key secret.</p>`,
+    linked: `<h3 style="margin-bottom:6px">Linked folders</h3>
+      <p class="muted" style="line-height:1.6;margin-bottom:14px;max-width:720px">${esc(pa().name)} and the staff can only touch files in the office folder, plus the folders you link here. Everything else on this computer stays off limits. Link only what they need, for example your shop's website folder or a documents folder.</p>
+      <div id="lkList" class="muted">Loading...</div>
+      <div style="display:grid;grid-template-columns:200px 1fr auto;gap:8px;max-width:820px;margin-top:14px;align-items:end">
+        <div><label class="lbl">Name</label><input class="in" id="lkLabel" placeholder="Company documents" maxlength="60"></div>
+        <div><label class="lbl">Full folder path</label><input class="in mono" id="lkPath" placeholder="D:\\Kedai Ali\\documents"></div>
+        <button class="btn pri" id="lkAdd" style="height:32px">${icon('plus')}Link</button></div>
+      <p class="faint" style="font-size:11.5px;margin-top:8px">Windows: in File Explorer, click the address bar and copy. Mac: right-click the folder while holding Option, then "Copy as Pathname". A project can also have its own linked folder (Projects, then the project).</p>`,
     cleanup: `<h3 style="margin-bottom:6px">Clean up</h3>
       <p class="muted" style="line-height:1.6;margin-bottom:14px">Clear test or old data. Your team stays as it is: ${esc(pa().name)}'s instructions, every staff's job, rules and settings, and office.json are never touched.</p>
       <div style="display:flex;flex-direction:column;gap:10px;max-width:640px">${CLEAN.map(([k, on, l, d]) => `<label style="display:flex;gap:10px;align-items:flex-start;line-height:1.45"><input type="checkbox" name="cl" value="${k}" ${on ? 'checked' : ''} style="margin-top:3px"><span><b style="font-weight:600">${esc(l)}</b><br><span class="muted">${esc(d)}</span></span></label>`).join('')}</div>
@@ -559,6 +569,15 @@ function renderSettings() {
   wireSplits($('#v-settings'));
   $$('[data-s]').forEach((b) => { b.onclick = () => { S.settings = b.dataset.s; renderSettings(); }; });
   const ks = $('#keyShow'); if (ks) ks.onclick = () => { $('#keyV').textContent = KEY; ks.remove(); };
+  if (S.settings === 'linked') {
+    const show = (list) => {
+      $('#lkList').innerHTML = list.length ? `<table style="max-width:820px"><thead><tr><th>Name</th><th>Folder</th><th></th></tr></thead><tbody>${list.map((l) => `<tr style="cursor:default"><td>${esc(l.project ? `Project: ${l.label}` : l.label)}</td><td class="mono" style="max-width:460px">${esc(l.path)}${l.ok ? '' : ' <span class="badge waiting">not found</span>'}</td>
+        <td style="text-align:right">${l.project ? `<button class="btn sm" data-go="projects">Change in project</button>` : `<button class="btn sm danger" data-unlink="${esc(l.path)}">Unlink</button>`}</td></tr>`).join('')}</tbody></table>` : '<div class="empty" style="text-align:left;padding:4px 0">No linked folders. Staff work only inside the office folder.</div>';
+      $$('[data-unlink]').forEach((b) => { b.onclick = () => act(() => api('linked/remove', 'POST', { path: b.dataset.unlink }), 'Unlinked').then(show); });
+    };
+    api('linked').then(show).catch((e) => { $('#lkList').textContent = e.message; });
+    $('#lkAdd').onclick = () => act(() => api('linked', 'POST', { path: $('#lkPath').value, label: $('#lkLabel').value }), 'Linked').then((list) => { $('#lkPath').value = ''; $('#lkLabel').value = ''; show(list); });
+  }
   const cg = $('#clGo');
   if (cg) {
     $('#clConf').oninput = (e) => { cg.disabled = e.target.value !== 'CLEAR'; };

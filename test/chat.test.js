@@ -65,6 +65,10 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.strictEqual(path.resolve(c.cwd), path.resolve(dir));
     assert.ok(c.args.includes('--tools') && c.args[c.args.indexOf('--tools') + 1] === 'Agent,Read,Write,Edit,Glob,Grep');
     assert.strictEqual(c.args[c.args.indexOf('--permission-mode') + 1], 'default');
+    const allowed = c.args[c.args.indexOf('--allowedTools') + 1].split(',');
+    assert.ok(!allowed.includes('Read') && !allowed.includes('Write') && !allowed.includes('Edit'), 'file tools never allowed everywhere');
+    assert.deepStrictEqual(allowed, ['Agent', ...require('../lib/templates').officeRules(dir)]);
+    assert.match(c.args[c.args.indexOf('--append-system-prompt') + 1], /only inside the office folder/);
     assert.ok(!c.args.includes('--resume'));
   });
 
@@ -93,6 +97,20 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     await idle('aina');
     const last = chats.history('aina').messages.pop();
     assert.strictEqual(last.kind, 'error'); assert.match(last.text, /usage limit is reached/);
+  });
+
+  await test('a linked folder is the only extra place a chat can reach', async () => {
+    const ext = path.join(tmp, 'linked site'); fs.mkdirSync(ext);
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8'));
+    cfg.linked = [{ path: ext, label: 'Website' }]; fs.writeFileSync(path.join(dir, 'office.json'), JSON.stringify(cfg));
+    chats.send('siti', 'hi');
+    await idle('siti');
+    const c = calls().pop();
+    const allowed = c.args[c.args.indexOf('--allowedTools') + 1].split(',');
+    const T = require('../lib/templates');
+    assert.deepStrictEqual(allowed, ['Agent', ...T.officeRules(dir), ...T.officeRules(ext)]);
+    assert.strictEqual(c.args[c.args.indexOf('--add-dir') + 1], ext);
+    assert.ok(c.args[c.args.indexOf('--append-system-prompt') + 1].includes(ext));
   });
 
   await test('new conversation forgets the session but keeps the history', async () => {
