@@ -17,6 +17,14 @@ const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 out({ type: 'system', subtype: 'init', session_id: 'sess-1' });
 if (msg.includes('LIMIT')) { out({ type: 'result', subtype: 'error', is_error: true, result: 'Claude AI usage limit reached|1795500000' }); process.exit(1); }
 if (msg.includes('SLOW')) { setTimeout(() => { out({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'slow done' }] } }); }, 1500); return; }
+if (msg.includes('STREAM')) {
+  out({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: '/o/OFFICE.md' } }] } });
+  out({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start' } });
+  out({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Baik ' } } });
+  out({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'boss.' } } });
+  setTimeout(() => { out({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Baik boss.' }] } }); }, 400);
+  return;
+}
 out({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Baik boss. I will ask **Siti**.' }, { type: 'tool_use', name: 'Agent' }] } });
 out({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'Quote for Kedai Ali', subagent_type: 'siti' });
 out({ type: 'assistant', parent_tool_use_id: 'toolu_x', message: { content: [{ type: 'text', text: 'staff inner text, not shown' }] } });
@@ -41,9 +49,11 @@ G.writeOffice(dir, G.buildConfig({ company: 'Kedai Ali', pa: 'Hana', staff: D.ST
 
 const events = [];
 const states = [];
+const lives = [];
 const chats = new Chats(dir, {
   onMessage: (id, m) => events.push([id, m]),
   onState: (id, r) => states.push([id, r]),
+  onLive: (id, l) => lives.push([id, l]),
   loadCfg: () => JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')),
 });
 const idle = (id) => new Promise((resolve) => { const t = setInterval(() => { if (!chats.runs.has(id)) { clearInterval(t); resolve(); } }, 50); });
@@ -122,6 +132,23 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.deepStrictEqual(allowed, [...T.officeRules(dir), ...T.officeRules(ext)]);
     assert.strictEqual(c.args[c.args.indexOf('--add-dir') + 1], ext);
     assert.ok(c.args[c.args.indexOf('--append-system-prompt') + 1].includes(ext));
+  });
+
+  await test('live view: steps in plain words, the answer streams in, then clears', async () => {
+    const { describe } = require('../lib/chat');
+    assert.strictEqual(describe('Write', { file_path: '/o/tasks/x-shah.md', content: '---\nstaff: shah\n' }, () => 'Shah'), 'Handing to Shah');
+    assert.strictEqual(describe('Bash', { command: 'cd "/a b" && git status' }), 'Running git status');
+    assert.strictEqual(describe('Glob', { pattern: '**/*' }), 'Looking through files');
+    assert.strictEqual(describe('Glob', { pattern: '**/OFFICE.md' }), 'Looking for OFFICE.md');
+    assert.strictEqual(describe('Read', { file_path: '/o/approvals/20261124-141242-siti-give-10-discount.md' }), 'Reading an approval');
+    lives.length = 0;
+    chats.send('aina', 'STREAM please');
+    await idle('aina');
+    const mine = lives.filter(([id]) => id === 'aina').map(([, l]) => l);
+    assert.ok(mine.some((l) => l.step === 'Reading OFFICE.md'), 'tool step shown');
+    assert.ok(mine.some((l) => l.text === 'Baik boss.'), 'answer streamed before it was final');
+    assert.deepStrictEqual(mine.pop(), { step: '', text: '' }, 'cleared at the end');
+    assert.strictEqual(chats.history('aina').messages.pop().text, 'Baik boss.');
   });
 
   await test('chat env drops the parent Claude session, keeps the user settings', async () => {

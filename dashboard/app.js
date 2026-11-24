@@ -173,7 +173,7 @@ async function draw3d() {
     company: S.office.company,
     pa: { name: pa().name, colour: pa().colour, look: pa().look || { scarf: true, skin: '#F2C9A0' } },
     staff: S.staff.map(({ id, name, role, colour, look }) => ({ id, name, role, colour, look })),
-    status: Object.fromEntries(Object.entries(S.status.people).map(([k, x]) => [k, { status: x.status, task: taskText(k, x.task) }])),
+    status: Object.fromEntries(Object.entries(S.status.people).map(([k, x]) => [k, { status: x.status, task: (x.status === 'working' && ((S.tasks || []).find((t) => t.staff === k) || {}).step) || taskText(k, x.task) }])),
     queue: open.slice(0, 3).map((x) => ({ text: (x.text || '').split('\n')[0], ticket: x.ticket })),
     queueCount: open.length,
   };
@@ -634,6 +634,22 @@ function msgHtml(id, m) {
   return `<div class="bm">${markdown(m.text)}<span class="t">${time}</span></div>`;
 }
 
+// What is happening right now in a chat: the step in plain words, seconds so far, and the
+// answer as it is being written. Updated on its own, many times a second, without redrawing the chat.
+function renderLive(id, keepScroll) {
+  const w = $(`.win[data-win="${id}"]`); if (!w) return;
+  const el = $('.live', w), body = $('.wb', w), c = chatOf(id), p = personOf(id);
+  if (!el || !p) return;
+  const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+  if (!c.running) { el.innerHTML = ''; return; }
+  const live = c.live || {};
+  const secs = c.since ? Math.max(0, Math.round((Date.now() - c.since) / 1000)) : 0;
+  el.innerHTML = `${live.text ? `<div class="bm streaming">${markdown(live.text)}<span class="caret"></span></div>` : ''}
+    <div class="typing"><span class="dots"><i></i><i></i><i></i></span><span class="step">${esc(live.step || `${p.name} is starting`)}</span><span class="secs">${secs}s</span><button class="btn sm" data-stop="${esc(id)}">Stop</button></div>`;
+  if (atEnd || keepScroll) body.scrollTop = body.scrollHeight;
+}
+setInterval(() => { for (const [id, c] of Object.entries(C)) if (c.running && c.since) { const el = $(`.win[data-win="${id}"] .live .secs`); if (el) el.textContent = `${Math.round((Date.now() - c.since) / 1000)}s`; } }, 1000);
+
 function renderChats() {
   let dock = $('#dock'), wins = $('#wins');
   if (!dock) { dock = document.createElement('div'); dock.id = 'dock'; document.body.append(dock); }
@@ -670,11 +686,12 @@ function renderChats() {
     $('.wh', w).innerHTML = `${av(p)}<b>${esc(p.name)}</b>${id === 'pa' ? MGR : ''}<span class="badge ${st}" style="height:18px;font-size:11px"><i class="d ${st}"></i>${SLAB[st]}</span><div class="acts"><button class="ibtn" data-newchat="${esc(id)}" title="New conversation (${esc(p.name)} starts fresh; this chat stays above)">${icon('refresh-cw')}</button><button class="ibtn" data-min="${esc(id)}" title="Minimise">${icon('minus')}</button><button class="ibtn" data-close="${esc(id)}" title="Close">${icon('x')}</button></div>`;
     const waits = id === 'pa' ? [] : pendingOks().filter((a) => a.from === id);
     const work = id === 'pa' ? (S.tasks || []) : (S.tasks || []).filter((t) => t.staff === id || t.from === id); // their own work, and what they asked a colleague
-    $('.wstrips', w).innerHTML = work.map((t) => `<div class="wstrip work">${icon('clock')}<div class="sq"><b>Working now</b>${esc((personOf(t.staff) || { name: t.staff }).name)}: ${esc(t.title || t.id)}</div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`).join('') + waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
+    $('.wstrips', w).innerHTML = work.map((t) => `<div class="wstrip work">${icon('clock')}<div class="sq"><b>Working now</b>${esc((personOf(t.staff) || { name: t.staff }).name)}: ${esc(t.title || t.id)}${t.step ? `<span class="now">${esc(t.step)}</span>` : ''}</div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`).join('') + waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
     const body = $('.wb', w);
-    const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+    const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
     const intro = id === 'pa' ? `${esc(p.name)} is your PA and manager. Tell her what you need; she hands it to the right staff.` : `Direct chat with ${esc(p.name)} (${esc(p.role)}).`;
-    body.innerHTML = `<div class="wsys">${intro}</div>${c.messages.map((m) => msgHtml(id, m)).join('')}${c.running ? `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(p.name)} is replying<button class="btn sm" data-stop="${esc(id)}">Stop</button></div>` : ''}`;
+    body.innerHTML = `<div class="wsys">${intro}</div>${c.messages.map((m) => msgHtml(id, m)).join('')}<div class="live"></div>`;
+    renderLive(id, true);
     if (atEnd || !body.dataset.seen) { body.scrollTop = body.scrollHeight; body.dataset.seen = '1'; }
     $('textarea', w).placeholder = c.running ? `Message ${p.name}... (goes next, after this reply)` : `Message ${p.name}...`;
   });
@@ -734,6 +751,7 @@ function live() {
     const { id, msg } = JSON.parse(e.data);
     const c = chatOf(id);
     if (c.loaded) c.messages.push(msg);
+    if (msg.from === id) c.live = { ...(c.live || {}), text: '' };
     const visible = V.open.slice(0, 8).includes(id) && !V.min.includes(id);
     if (!visible && msg.from !== 'boss') c.unread++;
     renderChats();
@@ -748,7 +766,14 @@ function live() {
     });
   });
   es.addEventListener('tasks', (e) => { const act = JSON.parse(e.data); api('tasks').then((r) => { S.tasks = r.active.map((a) => ({ ...a, ...(r.list.find((t) => t.id === a.id) || {}) })); renderChats(); }).catch(() => {}); S.tasks = act; renderChats(); });
-  es.addEventListener('chatstate', (e) => { const { id, running } = JSON.parse(e.data); chatOf(id).running = running; renderChats(); });
+  es.addEventListener('chatlive', (e) => { const { id, step, text } = JSON.parse(e.data); const c = chatOf(id); c.live = { step, text }; if (c.running && !c.since) c.since = Date.now(); renderLive(id); });
+  es.addEventListener('taskstep', (e) => {
+    const x = JSON.parse(e.data);
+    const t = (S.tasks || []).find((y) => y.id === x.id); if (t) t.step = x.step;
+    for (const el of $$('.wstrip.work')) if (el.querySelector(`[data-stoptask="${CSS.escape(x.id)}"]`)) { let n = el.querySelector('.now'); if (!n) { n = document.createElement('span'); n.className = 'now'; el.querySelector('.sq').append(n); } n.textContent = x.step; }
+    if (S.view === 'office') draw3d();
+  });
+  es.addEventListener('chatstate', (e) => { const { id, running } = JSON.parse(e.data); const c = chatOf(id); c.running = running; c.since = running ? (c.since || Date.now()) : null; if (!running) c.live = null; renderChats(); });
   es.addEventListener('changed', (e) => {
     const areas = JSON.parse(e.data).map((a) => (a === 'office' ? ['office', 'staff'] : a === 'staff' ? ['staff', 'office'] : [a])).flat();
     refresh([...new Set(areas)].filter((a) => a !== 'events')).catch(() => {});

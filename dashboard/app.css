@@ -289,3 +289,10 @@ body.ok-open #wins{right:456px}
 .wstrip.work{background:var(--green-soft);border-bottom-color:#BFE6CC}
 .wstrip.work > svg.ic{color:var(--green)}
 .wstrip.work .sq b{color:var(--green)}
+.bm.streaming{opacity:.92}
+.caret{display:inline-block;width:6px;height:13px;margin-left:2px;background:var(--acc);vertical-align:-2px;animation:blink 1s infinite}
+.typing .step{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.typing .secs{color:var(--faint);font-variant-numeric:tabular-nums}
+.typing .btn{margin-left:0}
+.wstrip .sq .now{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
+.wstrip .sq .now:before{content:"\25B8 "}
