@@ -31,6 +31,8 @@ test('invois tools allowed in dashboard runs: role tools, not the ask-first ones
   assert.ok(sales.includes('mcp__invois-online__get_companies'));
   assert.ok(sales.includes('mcp__invois-online__create_quotation'));
   assert.ok(sales.includes('mcp__invois-online__authenticate'));
+  assert.ok(sales.includes('mcp__claude_ai_Invois_Online__get_quotations'), 'claude.ai connector names too');
+  assert.ok(!sales.includes('mcp__claude_ai_Invois_Online__send_quotation_email'));
   assert.ok(!sales.includes('mcp__invois-online__send_quotation_email'));
   const fin = T.addonAllowed(cfg, 'mei-ling');
   assert.ok(fin.includes('mcp__invois-online__create_invoice'));

@@ -103,11 +103,11 @@ function decide(input, office, opts = {}) {
 }
 
 // Add-on actions that leave the office. Each needs the boss's OK, unless he set it to "Always allow".
-const ASK_FIRST = {
-  'mcp__invois-online__send_quotation_email': { addon: 'invois-online', label: 'Email a quotation to the customer' },
-  'mcp__invois-online__send_invoice_email': { addon: 'invois-online', label: 'Email an invoice to the customer' },
-  'mcp__invois-online__create_payment': { addon: 'invois-online', label: 'Record a payment on an invoice' },
-};
+// The same tools may come from the claude.ai connector (mcp__claude_ai_Invois_Online__...): same rule.
+const ASK_FIRST = {};
+for (const [t, label] of [['send_quotation_email', 'Email a quotation to the customer'], ['send_invoice_email', 'Email an invoice to the customer'], ['create_payment', 'Record a payment on an invoice']]) {
+  for (const server of ['invois-online', 'claude_ai_Invois_Online']) ASK_FIRST[`mcp__${server}__${t}`] = { addon: 'invois-online', label };
+}
 
 // Same call? Same keys, same values (a number and its text count as the same).
 function sameInput(a, b) {

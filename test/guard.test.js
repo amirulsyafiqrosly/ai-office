@@ -107,7 +107,9 @@ test('ask-first actions: only with an unused OK from the boss for that staff and
   assert.strictEqual(ask([], { always: ['send_quotation_email'] }).decision, 'allow');
   assert.strictEqual(ask([], { chat: false }).decision, null, 'terminal: Claude Code asks the boss');
   assert.strictEqual(decideAction({ tool_name: 'mcp__invois-online__get_quotations', tool_input: {} }, office, []), null);
-  assert.deepStrictEqual(Object.keys(ASK_FIRST).map((t) => t.split('__').pop()).sort(),
+  const viaConnector = decideAction({ tool_name: 'mcp__claude_ai_Invois_Online__send_quotation_email', tool_input: inp, cwd: '/home/ali/office/staff/siti' }, { ...office, addons: { 'invois-online': { enabled: true } } }, [grant()], { chat: true, win: false });
+  assert.strictEqual(viaConnector.decision, 'allow', 'same OK works through the claude.ai connector');
+  assert.deepStrictEqual([...new Set(Object.keys(ASK_FIRST).map((t) => t.split('__').pop()))].sort(),
     require('../lib/defaults').INVOIS.roles.flatMap((r) => r.askFirst).sort(), 'guard and defaults agree');
 });
 
