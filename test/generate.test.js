@@ -25,6 +25,22 @@ test('staff ids are unique, safe and avoid built-in agent names', () => {
   assert.deepStrictEqual(cfg.staff.map((s) => s.id), ['aina', 'mei-ling', 'plan-staff', 'mei-ling-2']);
 });
 
+test('invois tools allowed in dashboard runs: role tools, not the ask-first ones', () => {
+  const T = require('../lib/templates');
+  const sales = T.addonAllowed(cfg, 'plan-staff');
+  assert.ok(sales.includes('mcp__invois-online__get_companies'));
+  assert.ok(sales.includes('mcp__invois-online__create_quotation'));
+  assert.ok(sales.includes('mcp__invois-online__authenticate'));
+  assert.ok(!sales.includes('mcp__invois-online__send_quotation_email'));
+  const fin = T.addonAllowed(cfg, 'mei-ling');
+  assert.ok(fin.includes('mcp__invois-online__create_invoice'));
+  assert.ok(!fin.includes('mcp__invois-online__send_invoice_email') && !fin.includes('mcp__invois-online__create_payment'));
+  const pa = T.addonAllowed(cfg, 'pa');
+  assert.ok(pa.includes('mcp__invois-online__get_quotations'));
+  assert.ok(!pa.some((t) => /create_|send_|update_|convert_/.test(t)));
+  assert.deepStrictEqual(T.addonAllowed(cfg, 'aina'), []);
+});
+
 test('invois add-on goes to sales and finance staff only', () => {
   assert.deepStrictEqual(cfg.addons['invois-online'].staff, ['mei-ling', 'plan-staff']);
 });
