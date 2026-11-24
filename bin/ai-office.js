@@ -57,7 +57,8 @@ const here = path.resolve(value('--dir') || '.');
     else console.log(`\nAI Office is running: ${url}\nKeep this window open. Press Ctrl+C to stop.\n`);
     if (!flag('--no-open')) openBrowser(url);
     if (r.already) return 0;
-    process.on('SIGINT', () => { console.log('\nStopped.'); process.exit(0); });
+    const stop = async () => { console.log('\nStopped.'); if (r.close) await r.close(); process.exit(0); };
+    process.on('SIGINT', stop); process.on('SIGTERM', stop);
     return new Promise(() => {}); // keep running
   }
   const { wizard } = require('../lib/wizard');

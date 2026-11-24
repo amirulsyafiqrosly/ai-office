@@ -2,6 +2,7 @@
 // API to the office files; the server tells us when files change (Claude may edit them too).
 import { icon } from './icons.js';
 import { portrait } from './avatar.js';
+import { markdown } from './markdown.js';
 
 const KEY = document.querySelector('meta[name="office-key"]').content;
 const $ = (s, r = document) => r.querySelector(s);
@@ -104,7 +105,7 @@ function renderTop() {
 function renderSub() {
   const t = {
     office: `<span class="livebadge"><i class="d working"></i>Live</span><span class="legend2"><span><i class="d working"></i>Working</span><span><i class="d sleeping"></i>Sleeping</span><span><i class="d waiting"></i>Waiting for OK</span></span>
-      <span class="faint" style="margin-left:10px">Click anyone to see their work. Drag to move, scroll to zoom.</span>
+      <span class="faint" style="margin-left:10px">Click anyone to chat. Drag to move, scroll to zoom.</span>
       <div class="zoom"><button class="ibtn" id="zOut" title="Zoom out">${icon('minus')}</button><span id="zPct">${Math.round(V.zoom * 100)}%</span><button class="ibtn" id="zIn" title="Zoom in">${icon('plus')}</button><button class="ibtn" id="zFit" title="Fit to screen">${icon('maximize')}</button></div>`,
     staff: `<b>Team</b><span class="muted">${esc(pa().name)} + ${S.staff.length} staff. Changes save to each staff's CLAUDE.md.</span>`,
     projects: `<b>Projects</b><span class="muted">One folder per project, each with its own notes that staff read before working.</span>`,
@@ -133,6 +134,7 @@ function render() {
   $$('.view', main).forEach((el) => el.classList.toggle('on', el.id === `v-${S.view}`));
   ({ office: renderOffice, staff: renderStaff, projects: renderProjects, inbox: renderInbox, settings: renderSettings })[S.view]();
   renderOk();
+  renderChats();
 }
 
 // ------------------------------------------------------------------ office: live 3D office
@@ -140,7 +142,7 @@ function render() {
 // (Ctrl+Shift+R) or a new tab starts at the default: zoomed in a little.
 const VKEY = 'aio.view';
 if ($('meta[name="fresh"]').content === '1') sessionStorage.removeItem(VKEY);
-const V = Object.assign({ zoom: 1.4, panX: 0, panY: 0 }, JSON.parse(sessionStorage.getItem(VKEY) || '{}'));
+const V = Object.assign({ zoom: 1.4, panX: 0, panY: 0, open: ['pa'], min: [] }, JSON.parse(sessionStorage.getItem(VKEY) || '{}'));
 const saveView = () => sessionStorage.setItem(VKEY, JSON.stringify(V));
 let office3d = null, scene = null, sceneKey = '', building = false, again = false;
 
@@ -187,7 +189,7 @@ async function draw3d() {
     if (scene) scene.dispose();
     stage.replaceChildren(inner); scene = r;
     stage.style.width = `${r.width}px`; stage.style.height = `${r.height}px`;
-    $$('.tag[data-id]', inner).forEach((t) => { t.onclick = () => { S.sel.staff = t.dataset.id; S.staffSeg = 'active'; go('staff'); }; });
+    $$('.tag[data-id]', inner).forEach((t) => { t.onclick = () => openChat(t.dataset.id); });
     const l = $('#oLoad'); if (l) l.remove();
     fitOffice();
   } catch (e) {
@@ -203,8 +205,10 @@ function fitOffice(animate) {
   const stage = $('#officeStage'), wrap = $('#officeWrap');
   if (!stage || !scene || !wrap.offsetWidth) return;
   const base = Math.min(wrap.clientWidth / scene.width, wrap.clientHeight / scene.height) * 0.94;
+  const k = base * V.zoom, occ = ($('#wins') || {}).offsetWidth || 0;
+  const shift = occ ? -Math.min(occ / 3, Math.max(0, (wrap.clientWidth - scene.width * k) / 2)) : 0; // never off the left edge
   stage.style.transition = animate ? 'transform .25s ease' : 'none';
-  stage.style.transform = `translate(calc(-50% + ${V.panX.toFixed(1)}px), calc(-50% + ${V.panY.toFixed(1)}px)) scale(${(base * V.zoom).toFixed(4)})`;
+  stage.style.transform = `translate(calc(-50% + ${(V.panX + shift).toFixed(1)}px), calc(-50% + ${V.panY.toFixed(1)}px)) scale(${k.toFixed(4)})`;
   const pct = $('#zPct'); if (pct) pct.textContent = `${Math.round(V.zoom * 100)}%`;
   saveView();
 }
@@ -244,7 +248,7 @@ function okItem(a) {
     <div class="okh2">${who ? av(who) : ''}<b>${esc(who ? who.name : a.from)}</b><span class="faint">${when(a.created)}</span>${a.project ? `<span class="proj">${esc(a.project)}</span>` : ''}</div>
     <div class="okq">${esc(a.action)}</div>${a.details ? `<div class="okc">${esc(a.details)}</div>` : ''}
     ${done ? `<div class="okdone ${a.status}">${icon(a.status === 'approved' ? 'check' : 'x')}${a.status === 'approved' ? 'Approved' : 'Rejected'} ${when(a.decided)}</div>`
-    : `<div class="okb"><button class="btn ok" data-ok="${esc(a.id)}" data-d="approved">${icon('check')}Approve</button><button class="btn" data-ok="${esc(a.id)}" data-d="rejected">${icon('x')}Reject</button></div>`}
+    : `<div class="okb"><button class="btn ok" data-ok="${esc(a.id)}" data-d="approved">${icon('check')}Approve</button><button class="btn" data-ok="${esc(a.id)}" data-d="rejected">${icon('x')}Reject</button>${who ? `<button class="btn ghost" style="margin-left:auto" data-ask="${esc(a.id)}">${icon('message-circle')}Ask</button>` : ''}</div>`}
   </div>`;
 }
 function renderOk() {
@@ -480,7 +484,9 @@ function renderInboxSide() {
       <label class="lbl">${esc(x.type)} from ${esc(x.source)}, ${when(x.received)}</label>
       <div class="pre" style="border:1px solid var(--line2);border-radius:var(--r)">${esc(x.text)}</div>
       <label class="lbl">File</label><div class="mono muted">inbox/${esc(x.id)}.md</div>
-    </div>`;
+    </div>
+    <div class="formfoot"><button class="btn pri" id="iAsk">${icon('message-circle')}Ask ${esc(pa().name)} to handle it</button></div>`;
+  $('#iAsk').onclick = () => sendChat('pa', `Please handle inbox item #${x.ticket} from ${x.from} (inbox/${x.id}.md).`);
   const save = () => act(() => api(`inbox/${encodeURIComponent(x.id)}`, 'PUT', { assigned: $('#iWho').value, status: $('#iSt').value }), 'Saved').then(() => refresh(['inbox']));
   $('#iWho').onchange = save; $('#iSt').onchange = save;
   $('[data-x]', f).onclick = () => { S.sel.inbox = null; renderInbox(); };
@@ -517,12 +523,108 @@ function renderSettings() {
   const ks = $('#keyShow'); if (ks) ks.onclick = () => { $('#keyV').textContent = KEY; ks.remove(); };
 }
 
+
+// ------------------------------------------------------------------ chats (dock + windows)
+// Each message runs Claude Code on the user's own account (in the office folder for the PA,
+// in staff/<id>/ for a staff). Replies stream in over the live connection.
+const C = {}; // id -> { messages, running, loaded, unread }
+const chatOf = (id) => (C[id] = C[id] || { messages: [], running: false, loaded: false, unread: 0 });
+const personOf = (id) => (id === 'pa' ? { id: 'pa', name: pa().name, colour: pa().colour, look: pa().look || { scarf: true, skin: '#F2C9A0' } } : S.staff.find((s) => s.id === id));
+const RING = { working: 'var(--green)', sleeping: '#C9CDD8', waiting: 'var(--amber)' };
+const SLAB = { working: 'Working', sleeping: 'Sleeping', waiting: 'Waiting for OK' };
+
+async function openChat(id, draft) {
+  if (!personOf(id)) return;
+  V.min = V.min.filter((x) => x !== id);
+  V.open = [id, ...V.open.filter((x) => x !== id)];
+  const c = chatOf(id); c.unread = 0;
+  saveView(); renderChats();
+  if (!c.loaded) { const h = await api(`chat/${id}`).catch(() => null); if (h) { c.messages = h.messages; c.running = h.running; c.loaded = true; renderChats(); } }
+  const ta = $(`.win[data-win="${id}"] textarea`);
+  if (ta) { if (draft) { ta.value = draft; ta.setSelectionRange(draft.length, draft.length); } ta.focus(); }
+}
+function closeChat(id) { V.open = V.open.filter((x) => x !== id); V.min = V.min.filter((x) => x !== id); saveView(); renderChats(); }
+function toggleMin(id) { V.min = V.min.includes(id) ? V.min.filter((x) => x !== id) : [...V.min, id]; if (!V.min.includes(id)) chatOf(id).unread = 0; saveView(); renderChats(); }
+
+async function sendChat(id, text) {
+  const t = String(text || '').trim(); if (!t) return;
+  await openChat(id);
+  try { await api(`chat/${id}`, 'POST', { text: t }); chatOf(id).running = true; renderChats(); return true; } catch (e) { toast(e.message, true); return false; }
+}
+
+function msgHtml(id, m) {
+  const time = m.at ? new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  if (m.from === 'boss') return `<div class="bm me">${esc(m.text)}<span class="t">${time}</span></div>`;
+  if (m.from === 'system') {
+    if (m.kind === 'error') return `<div class="wact err">${icon('circle-alert')}${esc(m.text)}</div>`;
+    return `<div class="wact">${icon(m.done ? 'check' : 'chevron-right')}${esc(m.text)}</div>`;
+  }
+  return `<div class="bm">${markdown(m.text)}<span class="t">${time}</span></div>`;
+}
+
+function renderChats() {
+  let dock = $('#dock'), wins = $('#wins');
+  if (!dock) { dock = document.createElement('div'); dock.id = 'dock'; document.body.append(dock); }
+  if (!wins) { wins = document.createElement('div'); wins.id = 'wins'; document.body.append(wins); }
+  const people = [personOf('pa'), ...S.staff];
+  V.open = V.open.filter((id) => personOf(id));
+  const maxWin = Math.max(1, Math.floor((innerWidth - 90 - (S.okOpen ? 380 : 0)) / 340));
+  const shown = V.open.slice(0, maxWin);
+
+  dock.innerHTML = people.map((p) => {
+    const st = (S.status.people[p.id] || {}).status || 'sleeping', c = chatOf(p.id);
+    return `<div class="head ${shown.includes(p.id) ? 'open' : ''} ${c.running ? 'busy' : ''}" data-chat="${esc(p.id)}" style="--ring:${RING[st]}">${av(p)}${c.unread ? `<span class="ub">${c.unread}</span>` : ''}${p.id === 'pa' ? '<span class="mstar"><img src="assets/emoji/star.png" alt=""></span>' : ''}<span class="nmtip">${esc(p.name)}${p.id === 'pa' ? ' (Manager)' : ''} . ${SLAB[st]}</span></div>`;
+  }).join('');
+
+  // keep windows (and what the boss is typing) between renders
+  for (const w of $$('.win', wins)) if (!shown.includes(w.dataset.win)) w.remove();
+  shown.forEach((id, i) => {
+    let w = $(`.win[data-win="${id}"]`, wins);
+    if (!w) {
+      w = document.createElement('div'); w.className = 'win'; w.dataset.win = id;
+      w.innerHTML = `<div class="wh" data-min="${esc(id)}"></div><div class="wstrips"></div><div class="wb"></div>
+        <div class="wf"><div class="box"><textarea rows="1" placeholder="Message ${esc(personOf(id).name)}..."></textarea><button class="btn pri send" title="Send">${icon('arrow-up')}</button></div>
+        ${id !== 'pa' ? `<div class="cc">${icon('eye')}${esc(pa().name)} gets a summary of this chat</div>` : ''}</div>`;
+      const ta = $('textarea', w);
+      const send = async () => { const t = ta.value; if (!t.trim() || chatOf(id).running) return; ta.value = ''; ta.style.height = ''; if (!(await sendChat(id, t))) ta.value = t; };
+      ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
+      ta.oninput = () => { ta.style.height = 'auto'; ta.style.height = `${Math.min(120, ta.scrollHeight)}px`; };
+      $('.send', w).onclick = send;
+    }
+    if (wins.children[i] !== w) wins.insertBefore(w, wins.children[i] || null);
+    const p = personOf(id), c = chatOf(id);
+    const st = c.running ? 'working' : ((S.status.people[id] || {}).status || 'sleeping');
+    w.classList.toggle('min', V.min.includes(id));
+    $('.wh', w).innerHTML = `${av(p)}<b>${esc(p.name)}</b>${id === 'pa' ? MGR : ''}<span class="badge ${st}" style="height:18px;font-size:11px"><i class="d ${st}"></i>${SLAB[st]}</span><div class="acts"><button class="ibtn" data-min="${esc(id)}" title="Minimise">${icon('minus')}</button><button class="ibtn" data-close="${esc(id)}" title="Close">${icon('x')}</button></div>`;
+    const waits = id === 'pa' ? [] : pendingOks().filter((a) => a.from === id);
+    $('.wstrips', w).innerHTML = waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
+    const body = $('.wb', w);
+    const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+    const intro = id === 'pa' ? `${esc(p.name)} is your PA and manager. Tell her what you need; she hands it to the right staff.` : `Direct chat with ${esc(p.name)} (${esc(p.role)}).`;
+    body.innerHTML = `<div class="wsys">${intro}</div>${c.messages.map((m) => msgHtml(id, m)).join('')}${c.running ? `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(p.name)} is working<button class="btn sm" data-stop="${esc(id)}">Stop</button></div>` : ''}`;
+    if (atEnd || !body.dataset.seen) { body.scrollTop = body.scrollHeight; body.dataset.seen = '1'; }
+    $('.send', w).disabled = c.running;
+  });
+  if (S.view === 'office') fitOffice();
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-chat],[data-close],[data-min],[data-stop],[data-ask]');
+  if (!t) return;
+  if (t.dataset.chat) { const id = t.dataset.chat; if (V.open[0] === id && !V.min.includes(id)) closeChat(id); else openChat(id); }
+  else if (t.dataset.close) { e.stopPropagation(); closeChat(t.dataset.close); }
+  else if (t.dataset.min) { e.stopPropagation(); toggleMin(t.dataset.min); }
+  else if (t.dataset.stop) api(`chat/${t.dataset.stop}/stop`, 'POST').catch((er) => toast(er.message, true));
+  else if (t.dataset.ask) { const a = S.approvals.find((x) => x.id === t.dataset.ask); if (a) openChat(a.from, `About "${a.action}": `); }
+});
+window.addEventListener('resize', () => renderChats());
+
 // ------------------------------------------------------------------ events
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-go],[data-oktoggle],#okStat,[data-ok]');
   if (!t) return;
   if (t.dataset.go) go(t.dataset.go);
-  else if (t.id === 'okStat' || t.dataset.oktoggle !== undefined && t.hasAttribute('data-oktoggle')) { S.okOpen = !S.okOpen; renderOk(); }
+  else if (t.id === 'okStat' || t.hasAttribute('data-oktoggle')) { S.okOpen = !S.okOpen; renderOk(); renderChats(); }
   else if (t.dataset.ok) {
     t.disabled = true;
     act(() => api(`approvals/${encodeURIComponent(t.dataset.ok)}/decide`, 'POST', { decision: t.dataset.d }), t.dataset.d === 'approved' ? 'Approved. The staff will see it.' : 'Rejected.')
@@ -546,7 +648,17 @@ function live() {
     renderTop();
     if (S.view === 'office') renderOffice();
     if (S.view === 'staff' && $('#staffList')) renderStaff();
+    renderChats();
   });
+  es.addEventListener('chat', (e) => {
+    const { id, msg } = JSON.parse(e.data);
+    const c = chatOf(id);
+    if (c.loaded) c.messages.push(msg);
+    const visible = V.open.slice(0, 8).includes(id) && !V.min.includes(id);
+    if (!visible && msg.from !== 'boss') c.unread++;
+    renderChats();
+  });
+  es.addEventListener('chatstate', (e) => { const { id, running } = JSON.parse(e.data); chatOf(id).running = running; renderChats(); });
   es.addEventListener('changed', (e) => {
     const areas = JSON.parse(e.data).map((a) => (a === 'office' ? ['office', 'staff'] : a === 'staff' ? ['staff', 'office'] : [a])).flat();
     refresh([...new Set(areas)].filter((a) => a !== 'events')).catch(() => {});
@@ -559,6 +671,10 @@ function live() {
 
 (async () => {
   try { await load(); S.status = await api('status'); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
+  const run = await api('chats').catch(() => ({ running: [] }));
+  run.running.forEach((id) => { chatOf(id).running = true; });
   go(location.hash.slice(1) || 'office');
+  await Promise.all(V.open.map(async (id) => { if (!personOf(id)) return; const h = await api(`chat/${id}`).catch(() => null); if (h) Object.assign(chatOf(id), { messages: h.messages, running: h.running, loaded: true }); }));
+  renderChats();
   live();
 })();

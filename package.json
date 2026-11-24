@@ -20,6 +20,6 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node test/generate.test.js && node test/status.test.js && node test/server.test.js"
+    "test": "node test/generate.test.js && node test/status.test.js && node test/chat.test.js && node test/server.test.js"
   }
 }
