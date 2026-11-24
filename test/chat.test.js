@@ -103,6 +103,13 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.strictEqual(last.kind, 'error'); assert.match(last.text, /usage limit is reached/);
   });
 
+  await test('in a direct chat a staff may ask a colleague (with from: their id)', async () => {
+    const { access } = require('../lib/chat');
+    const note = access(dir, 'siti').note;
+    assert.match(note, /from: siti/); assert.match(note, /Colleagues: aina \(Aina/);
+    assert.match(access(dir, 'siti', { task: true }).note, /cannot ask colleagues from here/);
+  });
+
   await test('a linked folder is the only extra place a chat can reach', async () => {
     const ext = path.join(tmp, 'linked site'); fs.mkdirSync(ext);
     const cfg = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8'));

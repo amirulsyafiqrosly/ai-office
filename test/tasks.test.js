@@ -38,7 +38,7 @@ G.writeOffice(dir, G.buildConfig({ company: 'Kedai Ali', pa: 'Hana', staff: D.ST
 
 const started = [], ended = [];
 const tasks = new Tasks(dir, {
-  access: (id) => access(dir, id), claude: resolveClaude, env: chatEnv,
+  access: (id, o) => access(dir, id, o), claude: resolveClaude, env: chatEnv,
   loadCfg: () => JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')),
   onStart: (t) => started.push(t.id), onEnd: (t, r) => ended.push([t.id, t.status, r]),
 });
@@ -76,10 +76,26 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.ok(at('invoice two') - at('invoice one') >= 2000, 'nurul did her second task after the first');
   });
 
+  await test('a staff can ask a colleague; the answer is for whoever asked', async () => {
+    fs.writeFileSync(path.join(dir, 'tasks', 'q1.md'), '---\nstaff: nurul\nfrom: siti\nstatus: new\n---\nAny problems with the invoices?\n');
+    tasks.scan();
+    await until(() => ended.some(([id]) => id === 'q1'));
+    const t = tasks.read('q1');
+    assert.strictEqual(t.status, 'done'); assert.strictEqual(t.from, 'siti');
+    const c = calls().find((x) => x.args[x.args.indexOf('-p') + 1].includes('Any problems'));
+    assert.match(c.args[c.args.indexOf('-p') + 1], /^Task from Siti/);
+    assert.match(c.args[c.args.indexOf('--append-system-prompt') + 1], /cannot ask colleagues from here/, 'no tasks from inside a task');
+    fs.writeFileSync(path.join(dir, 'tasks', 'q2.md'), '---\nstaff: siti\nfrom: siti\nstatus: new\n---\nAsk myself\n');
+    fs.writeFileSync(path.join(dir, 'tasks', 'q3.md'), '---\nstaff: siti\nfrom: ghost\nstatus: new\n---\nFrom nobody\n');
+    tasks.scan();
+    assert.match(tasks.read('q2').result, /cannot give a task to themselves/);
+    assert.match(tasks.read('q3').result, /not on the team/);
+  });
+
   await test('a task for someone who is not on the team fails with a plain reason', async () => {
     put('t5', 'ghost', 'Do something');
     tasks.scan();
-    await until(() => ended.length === 5);
+    await until(() => ended.some(([id]) => id === 't5'));
     assert.strictEqual(tasks.read('t5').status, 'failed');
     assert.match(tasks.read('t5').result, /no active staff/);
   });

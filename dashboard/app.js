@@ -669,7 +669,7 @@ function renderChats() {
     w.classList.toggle('min', V.min.includes(id));
     $('.wh', w).innerHTML = `${av(p)}<b>${esc(p.name)}</b>${id === 'pa' ? MGR : ''}<span class="badge ${st}" style="height:18px;font-size:11px"><i class="d ${st}"></i>${SLAB[st]}</span><div class="acts"><button class="ibtn" data-newchat="${esc(id)}" title="New conversation (${esc(p.name)} starts fresh; this chat stays above)">${icon('refresh-cw')}</button><button class="ibtn" data-min="${esc(id)}" title="Minimise">${icon('minus')}</button><button class="ibtn" data-close="${esc(id)}" title="Close">${icon('x')}</button></div>`;
     const waits = id === 'pa' ? [] : pendingOks().filter((a) => a.from === id);
-    const work = id === 'pa' ? (S.tasks || []) : (S.tasks || []).filter((t) => t.staff === id);
+    const work = id === 'pa' ? (S.tasks || []) : (S.tasks || []).filter((t) => t.staff === id || t.from === id); // their own work, and what they asked a colleague
     $('.wstrips', w).innerHTML = work.map((t) => `<div class="wstrip work">${icon('clock')}<div class="sq"><b>Working now</b>${esc((personOf(t.staff) || { name: t.staff }).name)}: ${esc(t.title || t.id)}</div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`).join('') + waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
     const body = $('.wb', w);
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
