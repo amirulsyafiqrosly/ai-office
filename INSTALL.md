@@ -10,7 +10,7 @@ How to talk to the user:
 - When something fails, say in plain words what happened and what you will try next. Never paste a raw error without explaining it.
 
 What AI Office is (tell the user in two lines if they ask): a PA called Hana plus 1 to 8 AI staff
-that run on their own Claude account, in a folder on their computer. A live dashboard comes in a later version.
+that run on their own Claude account, in a folder on their computer, with a live dashboard in the browser.
 
 ## Step 1: Find Node.js (version 18 or newer)
 
@@ -49,19 +49,49 @@ If the user would rather install Node for the whole computer: Windows `winget in
 (Windows asks for admin), Mac `brew install node` (if Homebrew is there), otherwise the installer from https://nodejs.org.
 After a system install, open a new shell before checking `node --version`.
 
-## Step 2: Ask the setup questions
+## Step 2: Ask the setup questions, one at a time
 
-Ask everything in **one** short message, showing the defaults, so the user can just say "OK":
+Ask **one question per message** and wait for the answer before the next. Each question is one or two
+short lines and shows its default, so the user can just say "OK". Change only what the user asks to change.
 
-| Question | Default |
-|---|---|
-| Company name | My Company Sdn Bhd |
-| Where to put the office folder | A folder named after the company in the user's home folder, for example `C:\Users\<name>\my-company` or `~/my-company`. Avoid OneDrive and cloud-synced folders |
-| PA's name | Hana |
-| Staff (1 to 8): name, role, what they do | Aina (Customer Service), Siti (Sales), Nurul (Finance), Ahmad (Tech). More if they want: Farah (Marketing), Mei Ling (Operations), Kumar (HR), Daniel (Admin) |
-| Do they send quotations or invoices? (optional add-on Invois Online: real quotations and invoices, free plan 60 documents a month, made by the team behind AI Office) | No |
+If you have a tool for multiple-choice questions (in Claude Code: AskUserQuestion), use it for every
+question with choices below. Put the default first. The user can always type their own answer.
+Without that tool, ask in plain text and number the choices.
 
-Change only what the user asks to change. A new staff needs a name, a role, and one line on what they do.
+1. **Company name.** "What is your company or business name?" Free text. If they skip: `My Company Sdn Bhd`.
+
+2. **Office folder.** Suggest a folder named after the company in their home folder, for example
+   `C:\Users\<name>\kedai-baju-ali` or `~/kedai-baju-ali`. Choices: that folder (default), or somewhere else.
+   Avoid OneDrive and other cloud-synced folders: if they pick one, say why it is a bad idea (files sync
+   while staff work, which can lock them) and suggest the home folder. If the folder already has an office, ask for another.
+
+3. **PA's name.** "Your PA runs the office: you talk to them, they hand work to your staff. What should we call your PA?"
+   Choices: Hana (default), or their own name for the PA.
+
+4. **Staff.** "Which staff do you want? Pick 1 to 8." Ask as two multi-select questions in the same message:
+
+   | Main team (default: all four) | More staff (optional) |
+   |---|---|
+   | Aina: Customer Service | Farah: Marketing |
+   | Siti: Sales | Mei Ling: Operations |
+   | Nurul: Finance | Kumar: HR |
+   | Ahmad: Tech | Daniel: Admin |
+
+   They need at least 1. If they pick nobody, keep the main team.
+
+5. **Changes.** Show the picked staff in a small table (name, role, what they do), then ask:
+   "Want to rename anyone, change what they do, or add your own staff?" Choices: No, looks good (default), or Yes.
+   If yes, ask in plain chat. A new staff needs a name, a role, and one line on what they do. Keep the total at 8 or fewer.
+   The PA and staff should all have different names: if two match, ask to rename one.
+
+6. **invois.online MCP.** Ask only if a picked staff works in sales or finance (role has "sales", "finance" or "account").
+   "Do you send quotations or invoices? The invois.online MCP lets your sales and finance staff make real
+   quotations and invoices. Free plan: 60 documents a month. Made by the team behind AI Office."
+   Choices: No, maybe later (default), or Yes, connect it.
+   If yes, say you will help them log in to invois.online after the office is set up.
+
+7. **Confirm.** Show all answers in one small table and ask "Set up the office now?"
+   Choices: Yes (default), or Change something. On a change, ask only about that item, then confirm again.
 
 ## Step 3: Install
 
@@ -93,7 +123,22 @@ Change only what the user asks to change. A new staff needs a name, a role, and 
 3. Lines starting with `✓` went well. A line starting with `✗` says what is wrong: fix it (for example pick another
    folder) and run again. Delete the answers file when done.
 
-## Step 4: Open the dashboard
+## Step 4: Connect invois.online (only if they said yes)
+
+The installer already added the invois.online MCP to the office (a `✓` line says so). Now help the user log in:
+
+1. If the installer printed a `!` line for invois.online instead, add it yourself, in the office folder:
+   `claude mcp add --transport http --scope project invois-online https://mcp.invois.online`
+2. Tell the user: "Next I'll open the invois.online login page in your browser. Log in, or make a free
+   account there (https://invois.online/?ref=ai-office), then allow access. Come back here when it says done. OK?"
+3. In the office folder, run `claude mcp login invois-online`. It opens the browser and waits until the user
+   finishes, so give it up to 10 minutes (or run it in the background and wait for it to end).
+4. It ends without an error: tell the user invois.online is connected and their sales and finance staff can use it.
+5. It fails, or there is no browser: explain in plain words, then give them this to do later, once:
+   open a terminal in the office folder, run `claude`, answer yes when asked to trust the folder and to use
+   the `invois-online` server, type `/mcp`, pick `invois-online`, choose Authenticate, and log in.
+
+## Step 5: Open the dashboard
 
 The office folder now has a launcher that starts the dashboard with the right Node:
 `Start AI Office.cmd` (Windows), `Start AI Office.command` (Mac) or `start-office.sh` (Linux).
@@ -105,17 +150,16 @@ Start it so it keeps running after this chat ends:
 
 It opens http://localhost:4747 in the browser (or the next free port; it prints the address).
 
-## Step 5: Tell the user what they have
+## Step 6: Tell the user what they have
 
 In a few short lines:
 
-- Where the office folder is, and that Hana and the staff are ready. The dashboard is open in their browser.
+- Where the office folder is, and that their PA (by the name they chose) and the staff are ready. The dashboard is open in their browser.
 - Next time: double-click **Start AI Office** in the office folder. Keep its window open while using the dashboard.
-- To give Hana work: open a terminal in the office folder and run `claude`. The first time, Claude Code asks
-  "Do you trust this folder?": answer yes. Then just tell Hana what you need, in your own words.
+- To give the PA work: open a terminal in the office folder and run `claude`. The first time, Claude Code asks
+  "Do you trust this folder?": answer yes. Then just tell the PA what you need, in your own words.
 - Offer to open the office folder in their file manager.
-- If they said yes to Invois Online: to connect it, run `claude` in the office folder, type `/mcp`, pick
-  `invois-online`, and log in in the browser. Free account: https://invois.online/?ref=ai-office
+- If they said yes to invois.online: say whether it is connected (Step 4). If not, repeat the one-time steps from Step 4.5.
 - Do not mention PATH or Node to the user unless they ask: the office already knows where its Node is.
 
-Do not start any other web server. Do not change anything outside the office folder and `~/.ai-office/`.
+Do not start any other web server. Do not change anything outside the office folder and `~/.ai-office/` (the invois.online login is kept by Claude Code itself).
