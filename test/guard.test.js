@@ -1,6 +1,6 @@
 // Command guard: who may run what, where. This is a safety boundary, so test it hard.
 const assert = require('assert');
-const { decide, PRESETS } = require('../office-files/guard');
+const { decide, decideAction, ASK_FIRST, PRESETS } = require('../office-files/guard');
 
 const office = {
   dir: '/home/ali/office',
@@ -87,6 +87,28 @@ test('Windows paths (Git Bash /c/..., backslashes, quotes, WSL share)', () => {
 
 test('presets are what the Staff page offers', () => {
   assert.deepStrictEqual(Object.keys(PRESETS), ['git', 'laravel', 'node', 'composer']);
+});
+
+test('ask-first actions: only with an unused OK from the boss for that staff and that exact call', () => {
+  const T = 'mcp__invois-online__send_quotation_email';
+  const inp = { company_id: 1, quotation_id: 'QA000123' };
+  const grant = (f) => ({ id: 'a1', from: 'siti', tool: 'send_quotation_email', input: inp, ...f });
+  const ask = (grants, o = {}) => decideAction({ tool_name: T, tool_input: o.input || inp, cwd: o.cwd || '/home/ali/office/staff/siti' }, { ...office, addons: { 'invois-online': { enabled: true, always: o.always || [] } } }, grants, { chat: o.chat ?? true, win: false });
+  assert.strictEqual(ask([]).decision, 'deny');
+  assert.strictEqual(ask([grant({ used: '2026-11-25T01:00:00Z' })]).decision, 'deny', 'one OK covers one send');
+  assert.strictEqual(ask([grant({ from: 'shah' })]).decision, 'deny', 'another staff cannot use it');
+  assert.strictEqual(ask([grant({ tool: 'send_invoice_email' })]).decision, 'deny', 'other action');
+  assert.strictEqual(ask([grant()], { input: { company_id: 1, quotation_id: 'QA000999' } }).decision, 'deny', 'other quotation');
+  assert.strictEqual(ask([grant()], { input: { ...inp, emails: ['x@y.com'] } }).decision, 'deny', 'extra recipient the boss did not see');
+  assert.strictEqual(ask([grant()], { cwd: '/home/ali/office' }).decision, 'deny', 'the PA cannot use a staff OK');
+  const ok = ask([grant()]);
+  assert.strictEqual(ok.decision, 'allow'); assert.strictEqual(ok.grant, 'a1');
+  assert.strictEqual(ask([grant({ input: { quotation_id: 'QA000123', company_id: '1' } })]).decision, 'allow', 'key order and number as text');
+  assert.strictEqual(ask([], { always: ['send_quotation_email'] }).decision, 'allow');
+  assert.strictEqual(ask([], { chat: false }).decision, null, 'terminal: Claude Code asks the boss');
+  assert.strictEqual(decideAction({ tool_name: 'mcp__invois-online__get_quotations', tool_input: {} }, office, []), null);
+  assert.deepStrictEqual(Object.keys(ASK_FIRST).map((t) => t.split('__').pop()).sort(),
+    require('../lib/defaults').INVOIS.roles.flatMap((r) => r.askFirst).sort(), 'guard and defaults agree');
 });
 
 console.log(`\n${n} guard tests passed`);

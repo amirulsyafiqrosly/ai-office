@@ -264,7 +264,8 @@ function okItem(a) {
   return `<div class="oki ${done ? 'done' : ''}">
     <div class="okh2">${who ? av(who) : ''}<b>${esc(who ? who.name : a.from)}</b><span class="faint">${when(a.created)}</span>${a.project ? `<span class="proj">${esc(a.project)}</span>` : ''}</div>
     <div class="okq">${esc(a.action)}</div>${a.details ? `<div class="okc">${esc(a.details)}</div>` : ''}
-    ${done ? `<div class="okdone ${a.status}">${icon(a.status === 'approved' ? 'check' : 'x')}${a.status === 'approved' ? 'Approved' : 'Rejected'} ${when(a.decided)}</div>`
+    ${a.tool ? `<div class="okc faint">${done ? '' : `If you approve, ${esc(who ? who.name : a.from)} does it right away. `}Exact action: <span class="mono">${esc(a.tool)} ${esc(a.input || '')}</span></div>` : ''}
+    ${done ? `<div class="okdone ${a.status}">${icon(a.status === 'approved' ? 'check' : 'x')}${a.status === 'approved' ? 'Approved' : 'Rejected'} ${when(a.decided)}${a.used ? `, done ${when(a.used)}` : ''}</div>`
     : `<div class="okb"><button class="btn ok" data-ok="${esc(a.id)}" data-d="approved">${icon('check')}Approve</button><button class="btn" data-ok="${esc(a.id)}" data-d="rejected">${icon('x')}Reject</button>${who ? `<button class="btn ghost" style="margin-left:auto" data-ask="${esc(a.id)}">${icon('message-circle')}Ask</button>` : ''}</div>`}
   </div>`;
 }
@@ -308,7 +309,7 @@ function renderStaff() {
     const stCells = (id) => { const x = S.status.people[id] || { status: 'sleeping' };
       return `<td><span class="badge ${x.status}"><i class="d ${x.status}"></i>${LAB[x.status]}</span></td><td class="muted" style="max-width:260px">${esc(x.status === 'working' ? taskText(id, x.task) : '') || '-'}</td><td class="muted">${x.last ? when(x.last) : '-'}</td>`; };
     $('#staffList').innerHTML = `<table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Now doing</th><th>Last active</th></tr></thead><tbody>
-      <tr data-who="pa" class="${S.sel.staff === 'pa' ? 'sel' : ''}"><td><span class="who">${paAv()}${esc(pa().name)} ${MGR}</span></td><td>PA</td>${stCells('pa')}</tr>
+      <tr data-who="pa" class="${S.sel.staff === 'pa' ? 'sel' : ''}"><td><span class="who">${paAv()}${esc(pa().name)} ${MGR}</span></td><td>Manager</td>${stCells('pa')}</tr>
       ${S.staff.map((s) => `<tr data-who="${esc(s.id)}" class="${S.sel.staff === s.id ? 'sel' : ''}" title="${esc(s.job)}"><td><span class="who">${av(s)}${esc(s.name)}</span></td><td><span style="display:inline-flex;align-items:center;gap:6px"><i class="d" style="border-radius:2px;background:${esc(s.colour)}"></i>${esc(s.role)}</span>${invChip(s.id)}</td>${stCells(s.id)}</tr>`).join('')}
       </tbody></table>`;
     $$('#staffList tr[data-who]').forEach((tr) => { tr.onclick = () => { if (S.dirty.has('staff') && !confirm('Discard your unsaved changes?')) return; S.dirty.delete('staff'); S.sel.staff = tr.dataset.who; renderStaff(); }; });
@@ -327,7 +328,7 @@ function renderStaffForm() {
   const id = S.sel.staff;
   if (id === 'pa') {
     f.innerHTML = `<div class="ph">${paAv()}<h3>${esc(pa().name)}</h3>${MGR}<div class="acts"><button class="ibtn" data-x>${icon('x')}</button></div></div>
-      <div class="pb pre">${esc(pa().name)} is your PA and manager. Every task goes through ${esc(pa().name)}, who hands it to the right staff, checks the result and reports back to you.
+      <div class="pb pre">${esc(pa().name)} is your manager. Every task goes through ${esc(pa().name)}, who hands it to the right staff, checks the result and reports back to you.
 
 ${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in the office folder. The team table in it updates by itself when you add, edit or archive staff.</div>`;
   } else {
@@ -539,14 +540,17 @@ function renderSettings() {
   const body = {
     general: `<h3 style="margin-bottom:12px">General</h3><div class="kv">
       <span class="muted">Company</span><span>${esc(S.office.company)}</span>
-      <span class="muted">PA and manager</span><span>${esc(pa().name)}</span>
+      <span class="muted">Manager</span><span>${esc(pa().name)}</span>
       <span class="muted">Office folder</span><span class="mono">${esc(S.office.folder)}</span>
       <span class="muted">Dashboard</span><span class="mono">http://${esc(location.host)}</span></div>
-      <p class="muted" style="margin-top:16px;line-height:1.6">To change the company or PA name, ask Claude in the office folder, for example <i>"rename the company to Kedai Ali Sdn Bhd"</i>. Everything is plain files: OFFICE.md explains each one.</p>`,
-    addons: `<div class="featured"><div class="fhead"><img src="assets/invois-icon.png" alt=""><div><h2>Invois Online</h2><div class="muted">Real quotations, invoices and payments for your sales and finance staff. Made by the team behind AI Office.</div></div></div>
-      <div class="fbody">${inv && inv.enabled ? `Turned on for: <b>${(inv.staff || []).map((id) => esc(nameOf(id))).join(', ') || 'no staff yet'}</b>.<br>To log in (one time): open a terminal in the office folder, run <code>claude</code>, type <code>/mcp</code>, pick <b>invois-online</b> and log in in your browser.`
-      : `Not connected. Free plan: 60 documents a month. To connect, ask Claude in the office folder: <i>"connect Invois Online for my sales and finance staff"</i>.`}</div>
-      <div class="ffoot"><a class="btn inv" href="https://invois.online/?ref=ai-office" target="_blank" rel="noopener">Create free account</a><span class="muted">Sending and payments always ask for your OK first.</span></div></div>
+      <p class="muted" style="margin-top:16px;line-height:1.6">To change the company or manager's name, ask Claude in the office folder, for example <i>"rename the company to Kedai Ali Sdn Bhd"</i>. Everything is plain files: OFFICE.md explains each one.</p>`,
+    addons: `<div class="featured"><div class="fhead"><img src="assets/invois-icon.png" alt=""><div><h2>invois.online</h2><div class="muted">Real quotations, invoices and payments for your sales and finance staff. Made by the team behind AI Office.</div></div></div>
+      <div class="fbody">${inv && inv.enabled ? `Turned on for: <b>${(inv.staff || []).map((id) => esc(nameOf(id))).join(', ') || 'no staff yet'}</b>.<br>Not logged in yet? Ask ${esc(pa().name)} in chat: <i>"log in to invois.online"</i>, and sign in in your browser.
+        <h3 style="margin:18px 0 6px">Actions that leave your office</h3>
+        <p class="muted" style="line-height:1.6;margin-bottom:10px">Ask me first: the staff asks in Needs your OK, and does it right after you approve. Always allow: the staff does it without asking.</p>
+        <div id="actList" class="muted">Loading...</div>`
+      : `Not connected. Free plan: 60 documents a month. To connect, ask Claude in the office folder: <i>"connect the invois.online MCP for my sales and finance staff"</i>.`}</div>
+      <div class="ffoot"><a class="btn inv" href="https://invois.online/?ref=ai-office" target="_blank" rel="noopener">Create free account</a></div></div>
       <p class="muted" style="margin-top:20px;line-height:1.6">More: email, WhatsApp, your shop, any API. Ask Claude in the office folder, for example <i>"connect my Gmail enquiries to the inbox"</i> or <i>"let Siti send WhatsApp messages"</i>.</p>`,
     api: `<h3 style="margin-bottom:8px">Office key and local API</h3>
       <p class="muted" style="line-height:1.6;margin-bottom:12px">Scripts and connectors you set up can add inbox items, ask for approvals and log activity while the dashboard runs. Every call needs the office key. It only works on this computer.</p>
@@ -583,6 +587,14 @@ function renderSettings() {
     };
     api('linked').then(show).catch((e) => { $('#lkList').textContent = e.message; });
     $('#lkAdd').onclick = () => act(() => api('linked', 'POST', { path: $('#lkPath').value, label: $('#lkLabel').value }), 'Linked').then((list) => { $('#lkPath').value = ''; $('#lkLabel').value = ''; show(list); });
+  }
+  if ($('#actList')) {
+    const showActs = (list) => {
+      $('#actList').innerHTML = `<table style="max-width:640px"><tbody>${list.map((x) => `<tr style="cursor:default"><td>${esc(x.label)}</td><td style="text-align:right">
+        <select class="in" data-act="${esc(x.tool)}" style="width:auto"><option value="ask" ${x.always ? '' : 'selected'}>Ask me first</option><option value="always" ${x.always ? 'selected' : ''}>Always allow</option></select></td></tr>`).join('')}</tbody></table>`;
+      $$('[data-act]').forEach((sel) => { sel.onchange = () => act(() => api('actions', 'POST', { tool: sel.dataset.act, always: sel.value === 'always' }), sel.value === 'always' ? 'Set to Always allow' : 'Set to Ask me first').then(showActs); });
+    };
+    api('actions').then(showActs).catch((e) => { $('#actList').textContent = e.message; });
   }
   const cg = $('#clGo');
   if (cg) {
@@ -689,7 +701,7 @@ function renderChats() {
     $('.wstrips', w).innerHTML = work.map((t) => `<div class="wstrip work">${icon('clock')}<div class="sq"><b>Working now</b>${esc((personOf(t.staff) || { name: t.staff }).name)}: ${esc(t.title || t.id)}${t.step ? `<span class="now">${esc(t.step)}</span>` : ''}</div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`).join('') + waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
     const body = $('.wb', w);
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
-    const intro = id === 'pa' ? `${esc(p.name)} is your PA and manager. Tell her what you need; she hands it to the right staff.` : `Direct chat with ${esc(p.name)} (${esc(p.role)}).`;
+    const intro = id === 'pa' ? `${esc(p.name)} is your manager. Tell them what you need; they hand it to the right staff.` : `Direct chat with ${esc(p.name)} (${esc(p.role)}).`;
     body.innerHTML = `<div class="wsys">${intro}</div>${c.messages.map((m) => msgHtml(id, m)).join('')}<div class="live"></div>`;
     renderLive(id, true);
     if (atEnd || !body.dataset.seen) { body.scrollTop = body.scrollHeight; body.dataset.seen = '1'; }

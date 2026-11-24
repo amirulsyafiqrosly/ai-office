@@ -1,6 +1,8 @@
 // AI Office command guard. Claude Code runs this before every shell command (PreToolUse, Bash).
 // It allows only the commands the boss ticked for that staff on the Staff page, run in the
 // office folder or a linked folder. Some commands are always refused: the boss runs those.
+// It also checks the "ask first" add-on actions (send a quotation or invoice, record a payment):
+// allowed only when the boss set them to "Always allow" in Settings, or approved this exact one.
 // It decides; it does not run anything and sends nothing anywhere.
 const fs = require('fs');
 const path = require('path');
@@ -100,7 +102,53 @@ function decide(input, office, opts = {}) {
   return { decision: 'allow', reason: `on ${name}'s allowed commands` };
 }
 
-module.exports = { PRESETS, ALWAYS_DENY, decide };
+// Add-on actions that leave the office. Each needs the boss's OK, unless he set it to "Always allow".
+const ASK_FIRST = {
+  'mcp__invois-online__send_quotation_email': { addon: 'invois-online', label: 'Email a quotation to the customer' },
+  'mcp__invois-online__send_invoice_email': { addon: 'invois-online', label: 'Email an invoice to the customer' },
+  'mcp__invois-online__create_payment': { addon: 'invois-online', label: 'Record a payment on an invoice' },
+};
+
+// Same call? Same keys, same values (a number and its text count as the same).
+function sameInput(a, b) {
+  const norm = (v) => (v && typeof v === 'object' ? JSON.stringify(Array.isArray(v) ? v.map(norm) : Object.keys(v).sort().map((k) => [k, norm(v[k])])) : String(v));
+  const ka = Object.keys(a || {}).sort(), kb = Object.keys(b || {}).sort();
+  return ka.length === kb.length && ka.every((k, i) => k === kb[i] && norm(a[k]) === norm(b[k]));
+}
+
+// An ask-first add-on action. Returns { decision, reason, grant } (grant: the boss's OK it uses up), or null if not ours.
+// grants: .office/grants.json, written by the dashboard when the boss clicks Approve (staff cannot write there
+// from the dashboard): [{ id, from, tool, input, used }].
+function decideAction(input, office, grants, opts = {}) {
+  const tool = input.tool_name, rule = ASK_FIRST[tool];
+  if (!rule) return null;
+  const short = tool.split('__').pop();
+  const addon = (office.addons || {})[rule.addon] || {};
+  if ((addon.always || []).includes(short)) return { decision: 'allow', reason: `The boss set "${rule.label}" to Always allow.` };
+  const P = (opts.win ?? process.platform === 'win32') ? path.win32 : path.posix;
+  const rel = P.relative(office.dir, input.cwd || office.dir).split(/[\\/]/);
+  const staffId = input.agent_type || (rel[0] === 'staff' ? rel[1] : '');
+  const g = staffId && (grants || []).find((x) => !x.used && x.from === staffId && x.tool === short && sameInput(x.input, input.tool_input || {}));
+  if (g) return { decision: 'allow', reason: `The boss approved this (${g.action || short}).`, grant: g.id };
+  const how = `Write an approval file in approvals/ with "tool: ${short}" and "input: <the exact JSON you will call it with, on one line>", then stop. When the boss approves, the office runs it for you.`;
+  return opts.chat ? { decision: 'deny', reason: `"${rule.label}" needs the boss's OK first. ${how}` } : { decision: null, reason: how };
+}
+
+// Use up a grant (one OK covers one action), and note it in the approval file for the dashboard.
+function useGrant(dir, id, when = new Date().toISOString()) {
+  const f = path.join(dir, '.office', 'grants.json');
+  const grants = JSON.parse(fs.readFileSync(f, 'utf8'));
+  for (const g of grants) if (g.id === id) g.used = when;
+  fs.writeFileSync(f, JSON.stringify(grants, null, 2) + '\n');
+  try {
+    const af = path.join(dir, 'approvals', `${path.basename(id)}.md`);
+    const lines = fs.readFileSync(af, 'utf8').split(/\r?\n/);
+    const end = lines.indexOf('---', 1);
+    if (lines[0] === '---' && end > 0) { lines.splice(end, 0, `used: ${when}`); fs.writeFileSync(af, lines.join('\n')); }
+  } catch { /* approval file gone: the grant is what counts */ }
+}
+
+module.exports = { PRESETS, ALWAYS_DENY, ASK_FIRST, decide, decideAction, sameInput };
 
 if (require.main === module) {
   let raw = '';
@@ -108,9 +156,18 @@ if (require.main === module) {
   process.stdin.on('end', () => {
     let input, office;
     try { input = JSON.parse(raw); } catch { return; }
-    if (input.tool_name !== 'Bash') return;
     const dir = path.dirname(__dirname);
     try { office = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')); } catch { return; }
+    const say = (r) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
+    if (ASK_FIRST[input.tool_name]) {
+      let grants = [];
+      try { grants = JSON.parse(fs.readFileSync(path.join(dir, '.office', 'grants.json'), 'utf8')); } catch { /* none yet */ }
+      const r = decideAction(input, { ...office, dir }, grants, { chat: process.env.AI_OFFICE_CHAT === '1' });
+      if (!r || !r.decision) return; // terminal: Claude Code asks the boss as usual
+      if (r.grant) useGrant(dir, r.grant);
+      return say(r);
+    }
+    if (input.tool_name !== 'Bash') return;
     // linked folders: office-wide, plus each project's "linked:" line
     const linked = (office.linked || []).map((l) => l.path);
     try {
@@ -121,6 +178,6 @@ if (require.main === module) {
     } catch { /* no projects */ }
     const r = decide(input, { ...office, dir, linked }, { chat: process.env.AI_OFFICE_CHAT === '1' });
     if (!r.decision) return; // terminal: Claude Code asks the boss as usual
-    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
+    say(r);
   });
 }

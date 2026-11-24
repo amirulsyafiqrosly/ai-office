@@ -2,7 +2,7 @@
 
 Your own AI office staff, run with Claude Code on your own Claude account.
 
-A PA (Hana) takes your requests and hands them to your AI staff (support, sales, finance, tech).
+A manager (Hana) takes your requests and hands them to your AI staff (support, sales, finance, tech).
 A live dashboard in your browser shows an isometric office (who is working, on what, who is waiting for your OK),
 plus your team, projects, inbox and approvals. Chat with Hana or any staff right in the dashboard.
 

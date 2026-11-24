@@ -119,6 +119,29 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       assert.strictEqual(ev.ev, 'Approval'); assert.match(ev.msg, /approved/);
     });
 
+    await test('ask-first action: approve saves the OK for the guard and starts the staff; setting can be Always allow', async () => {
+      const o = JSON.parse(read('office.json'));
+      o.addons = { 'invois-online': { enabled: true, mcp: 'invois-online', staff: ['siti'] } };
+      fs.writeFileSync(path.join(dir, 'office.json'), JSON.stringify(o, null, 2));
+      assert.strictEqual((await req('POST', '/api/approvals', { from: 'siti', action: 'x', tool: 'rm_everything', input: {} })).status, 400);
+      const a = await req('POST', '/api/approvals', { from: 'siti', action: 'Email QA000123 to Kedai Ali', tool: 'mcp__invois-online__send_quotation_email', input: { company_id: 1, quotation_id: 'QA000123' } });
+      assert.strictEqual(a.body.tool, 'send_quotation_email');
+      await req('POST', `/api/approvals/${a.body.id}/decide`, { decision: 'approved' });
+      const g = JSON.parse(read('.office/grants.json')).pop();
+      assert.deepStrictEqual([g.from, g.tool, g.input.quotation_id, g.used], ['siti', 'send_quotation_email', 'QA000123', null]);
+      const t = fs.readdirSync(path.join(dir, 'tasks')).filter((f) => f.endsWith('-siti.md')).map((f) => read(`tasks/${f}`)).find((x) => x.includes(a.body.id));
+      assert.ok(t && /send_quotation_email/.test(t) && /QA000123/.test(t), 'siti got a task to do it');
+      const r = await req('POST', '/api/approvals', { from: 'siti', action: 'Email QA000124', tool: 'send_quotation_email', input: { company_id: 1, quotation_id: 'QA000124' } });
+      await req('POST', `/api/approvals/${r.body.id}/decide`, { decision: 'rejected' });
+      assert.strictEqual(JSON.parse(read('.office/grants.json')).length, 1, 'a rejection grants nothing');
+      const acts = await req('GET', '/api/actions');
+      assert.deepStrictEqual(acts.body.map((x) => x.tool), ['send_quotation_email', 'send_invoice_email', 'create_payment']);
+      await req('POST', '/api/actions', { tool: 'send_quotation_email', always: true });
+      assert.deepStrictEqual(JSON.parse(read('office.json')).addons['invois-online'].always, ['send_quotation_email']);
+      await req('POST', '/api/actions', { tool: 'send_quotation_email', always: false });
+      assert.deepStrictEqual(JSON.parse(read('office.json')).addons['invois-online'].always, []);
+    });
+
     await test('clean up: needs CLEAR, clears only what was picked, never the staff setup', async () => {
       await new Promise((res) => setTimeout(res, 800)); // the PA's short briefing after the approval ends first
       fs.writeFileSync(path.join(dir, 'staff/siti/quote.md'), 'x');

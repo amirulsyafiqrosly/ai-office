@@ -138,6 +138,8 @@ tr.sel td,tr.sel:hover td{background:var(--acc-soft)}
 .ov .tag[data-id]:hover .nm{border-color:var(--text)!important}
 .tag .nm{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--line);border-radius:3px;padding:0 6px;font-weight:600;font-size:11px;line-height:17px;color:var(--text)!important;white-space:nowrap}
 .tag .nm.hasmgr{border-color:#1B1D29!important;padding-right:0;overflow:hidden}
+.tag .nm.hasrole{padding-right:0;overflow:hidden}
+.tag .nm .mgr.role{font-weight:600;padding:0 6px}
 .tag .nm .mgr{align-self:stretch;height:auto;border-radius:0;font-size:10.5px;padding:0 6px 0 5px}
 .tag .nm .mgr img{width:11px;height:11px}
 .tag .pill{display:inline-flex;align-items:center;gap:4px;border-radius:3px;padding:0 6px 0 3px;font-weight:600;font-size:11px;line-height:18px;color:#fff;white-space:nowrap}

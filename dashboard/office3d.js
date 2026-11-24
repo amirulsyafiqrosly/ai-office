@@ -40,7 +40,7 @@ export async function buildOffice(opt = {}) {
   const status = opt.status || {};
   const st = (id) => (status[id] && status[id].status) || 'sleeping';
   const plan = seatPlan(opt.staff || []);
-  const pa = opt.pa || { name: 'PA', colour: '#8338EC', look: { scarf: true, skin: '#F2C9A0' } };
+  const pa = opt.pa || { name: 'Manager', colour: '#8338EC', look: { scarf: true, skin: '#F2C9A0' } };
   await document.fonts.load('700 40px Fredoka'); await document.fonts.load('900 20px Nunito');
   const emoji = {};
   for (const n of ['office_building', 'crown']) emoji[n] = await loadImg(EMO(n));
@@ -509,8 +509,10 @@ export async function renderOffice(container, opt = {}) {
     const S = r.note ? STATUS.working : (STATUS[s] || STATUS.sleeping);
     const txt = r.note || (s === 'working' && x.task) || S.label;
     const col = hex(p.colour, '#8D93A5');
-    const mgr = p.mgr ? `<span class="mgr"><img src="${EMO('star')}">Manager</span>` : '';
-    const html = `<div class="nm${mgr ? ' hasmgr' : ''}" style="color:${shadeHex(col, -0.18)};border-color:${col}">${esc(p.name)}${mgr}</div><div class="pill ${S.cls}"><img src="${EMO(r.note ? 'laptop' : S.icon)}">${esc(txt.length > 32 ? txt.slice(0, 30) + '...' : txt)}</div>`;
+    // badge after the name: Manager (dark, with a star) or the staff's role (in their colour)
+    const badge = p.mgr ? `<span class="mgr"><img src="${EMO('star')}">Manager</span>`
+      : p.role ? `<span class="mgr role" style="background:${shadeHex(col, -0.18)}">${esc(p.role.length > 22 ? p.role.slice(0, 20) + '...' : p.role)}</span>` : '';
+    const html = `<div class="nm${p.mgr ? ' hasmgr' : badge ? ' hasrole' : ''}" style="color:${shadeHex(col, -0.18)};border-color:${col}">${esc(p.name)}${badge}</div><div class="pill ${S.cls}"><img src="${EMO(r.note ? 'laptop' : S.icon)}">${esc(txt.length > 32 ? txt.slice(0, 30) + '...' : txt)}</div>`;
     if (html !== r.tagHtml) { d.innerHTML = html; r.tagHtml = html; d.title = txt; }
   }
   function setStatus(status) {

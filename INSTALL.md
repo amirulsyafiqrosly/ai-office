@@ -9,7 +9,7 @@ How to talk to the user:
 - Before you install or download anything, say what and why in one line, and ask for OK.
 - When something fails, say in plain words what happened and what you will try next. Never paste a raw error without explaining it.
 
-What AI Office is (tell the user in two lines if they ask): a PA called Hana plus 1 to 8 AI staff
+What AI Office is (tell the user in two lines if they ask): a manager called Hana plus 1 to 8 AI staff
 that run on their own Claude account, in a folder on their computer, with a live dashboard in the browser.
 
 ## Step 1: Find Node.js (version 18 or newer)
@@ -65,8 +65,8 @@ Without that tool, ask in plain text and number the choices.
    Avoid OneDrive and other cloud-synced folders: if they pick one, say why it is a bad idea (files sync
    while staff work, which can lock them) and suggest the home folder. If the folder already has an office, ask for another.
 
-3. **PA's name.** "Your PA runs the office: you talk to them, they hand work to your staff. What should we call your PA?"
-   Choices: Hana (default), or their own name for the PA.
+3. **Manager's name.** "Your manager runs the office: you talk to them, they hand work to your staff. What should we call your manager?"
+   Choices: Hana (default), or their own name for the manager.
 
 4. **Staff.** "Which staff do you want? Pick 1 to 8." Ask as two multi-select questions in the same message:
 
@@ -82,7 +82,7 @@ Without that tool, ask in plain text and number the choices.
 5. **Changes.** Show the picked staff in a small table (name, role, what they do), then ask:
    "Want to rename anyone, change what they do, or add your own staff?" Choices: No, looks good (default), or Yes.
    If yes, ask in plain chat. A new staff needs a name, a role, and one line on what they do. Keep the total at 8 or fewer.
-   The PA and staff should all have different names: if two match, ask to rename one.
+   The manager and staff should all have different names: if two match, ask to rename one.
 
 6. **invois.online MCP.** Ask only if a picked staff works in sales or finance (role has "sales", "finance" or "account").
    "Do you send quotations or invoices? The invois.online MCP lets your sales and finance staff make real
@@ -155,10 +155,10 @@ It opens http://localhost:4747 in the browser (or the next free port; it prints 
 
 In a few short lines:
 
-- Where the office folder is, and that their PA (by the name they chose) and the staff are ready. The dashboard is open in their browser.
+- Where the office folder is, and that their manager (by the name they chose) and the staff are ready. The dashboard is open in their browser.
 - Next time: double-click **Start AI Office** in the office folder. Keep its window open while using the dashboard.
-- To give the PA work: open a terminal in the office folder and run `claude`. The first time, Claude Code asks
-  "Do you trust this folder?": answer yes. Then just tell the PA what you need, in your own words.
+- To give the manager work: open a terminal in the office folder and run `claude`. The first time, Claude Code asks
+  "Do you trust this folder?": answer yes. Then just tell the manager what you need, in your own words.
 - Offer to open the office folder in their file manager.
 - If they said yes to invois.online: say whether it is connected (Step 4). If not, repeat the one-time steps from Step 4.5.
 - Do not mention PATH or Node to the user unless they ask: the office already knows where its Node is.
