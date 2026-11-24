@@ -13,6 +13,7 @@ Users run it on their own Claude account through their own Claude Code.
 - 2026-11-24: install is Claude-first (INSTALL.md, private Node in ~/.ai-office/node, --answers), file tools pre-allowed inside the office. Milestone 3 (server + dashboard: Staff, Projects, Inbox, Needs your OK, Settings, live refresh, Start AI Office launcher) done: lib/server.js, lib/office.js, dashboard/.
 - 2026-11-24: Milestone 4 (live office) done: lib/status.js turns hook events into who is working; dashboard/office3d.js builds the 3D office from office.json (PA by the boss room, customer-service role at the outside booth, up to 8 desks), three.js and fonts bundled.
 - 2026-11-24: Milestone 5 (Talk to Hana) done: lib/chat.js runs claude -p per message (resume per person, stream-json, fixed tool list), dashboard dock + windows, staff chat summaries to .office/staff-chats.md. Next: Milestone 6 (README + landing page, owner tests on Windows).
+- 2026-11-24 (after M5, from owner testing on Windows): animated office, approvals history, linked folders (chats locked to office + linked), allowed commands per staff via .office/guard.js, task-based delegation (tasks/ + lib/tasks.js, Hana free while staff work), staff-to-colleague requests, live chat steps + streaming. Open: warm Claude per chat, launcher redesign (EBUSY/offline), office in WSL, Milestone 6.
 - Design doc and mock-ups live in `design/` (gitignored, local only).
 
 ## Rules for this repo
