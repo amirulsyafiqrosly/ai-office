@@ -3,9 +3,10 @@
 Your own AI office staff, run with Claude Code on your own Claude account.
 
 A PA (Hana) takes your requests and hands them to your AI staff (support, sales, finance, tech).
-A dashboard in your browser shows your team, projects, inbox and what needs your OK. (The live 3D office is coming next.)
+A live dashboard in your browser shows an isometric office (who is working, on what, who is waiting for your OK),
+plus your team, projects, inbox and approvals. (Chatting with Hana from the dashboard is coming next.)
 
-Status: in development. Setup and dashboard work; the live office and chat are next. Not ready for general use yet.
+Status: in development. Setup, dashboard and live office work; dashboard chat is next. Not ready for general use yet.
 
 ## Install (let Claude do it)
 

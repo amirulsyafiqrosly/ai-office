@@ -27,6 +27,7 @@ const S = {
   view: 'office', staffSeg: 'active', settings: 'general',
   sel: { staff: null, project: null, inbox: null },
   okOpen: false, dirty: new Set(), project: null,
+  status: { people: {}, banner: null },
 };
 const views = ['office', 'staff', 'projects', 'inbox', 'settings'];
 
@@ -93,21 +94,29 @@ function renderTop() {
   const tabs = [['office', 'layout-grid', 'Office', ''], ['staff', 'users', 'Staff', S.staff.length],
     ['projects', 'folder', 'Projects', activeP || ''], ['inbox', 'inbox', 'Inbox', newIn || '']];
   $('#tabs').innerHTML = tabs.map(([v, ic, label, n]) => `<button class="tab ${S.view === v ? 'on' : ''}" data-go="${v}">${icon(ic)}${label}${n !== '' ? ` <span class="n ${v === 'inbox' ? 'warn' : ''}">${n}</span>` : ''}</button>`).join('');
-  const pending = S.approvals.filter((a) => a.status === 'pending').length;
-  $('#stat').innerHTML = `<b>${S.staff.length + 1}</b> in the team${pending ? ` <span class="sep" style="height:14px"></span> <b>${pending}</b> need your OK` : ''}`;
+  const st = Object.values(S.status.people);
+  const cnt = (k) => st.filter((x) => x.status === k).length;
+  $('#stat').innerHTML = `<span class="d working" style="background:#4ADE80"></span><b>${cnt('working')}</b> working <span class="d" style="background:rgba(255,255,255,.55);margin-left:8px"></span><b>${cnt('sleeping')}</b> sleeping${cnt('waiting') ? ` <span class="d" style="background:#FFB020;margin-left:8px"></span><b>${cnt('waiting')}</b> waiting` : ''}`;
   $('#where').textContent = location.host;
   $('#gear').innerHTML = icon('settings');
 }
 
 function renderSub() {
   const t = {
-    office: `<b>Office</b><span class="muted">${esc(pa().name)} and ${S.staff.length} staff. The live office (who is working right now) arrives in the next update.</span>`,
+    office: `<span class="livebadge"><i class="d working"></i>Live</span><span class="legend2"><span><i class="d working"></i>Working</span><span><i class="d sleeping"></i>Sleeping</span><span><i class="d waiting"></i>Waiting for OK</span></span>
+      <span class="faint" style="margin-left:10px">Click anyone to see their work. Drag to move, scroll to zoom.</span>
+      <div class="zoom"><button class="ibtn" id="zOut" title="Zoom out">${icon('minus')}</button><span id="zPct">${Math.round(V.zoom * 100)}%</span><button class="ibtn" id="zIn" title="Zoom in">${icon('plus')}</button><button class="ibtn" id="zFit" title="Fit to screen">${icon('maximize')}</button></div>`,
     staff: `<b>Team</b><span class="muted">${esc(pa().name)} + ${S.staff.length} staff. Changes save to each staff's CLAUDE.md.</span>`,
     projects: `<b>Projects</b><span class="muted">One folder per project, each with its own notes that staff read before working.</span>`,
     inbox: `<b>Inbox</b><span class="muted">Customer requests waiting for your team. One file each in inbox/.</span>`,
     settings: `<b>Settings</b><span class="muted">Saved in office.json in your office folder.</span>`,
   };
   $('#sub').innerHTML = t[S.view];
+  if (S.view === 'office') {
+    $('#zIn').onclick = () => zoomAt(V.zoom * 1.25);
+    $('#zOut').onclick = () => zoomAt(V.zoom / 1.25);
+    $('#zFit').onclick = () => { V.zoom = 1; V.panX = 0; V.panY = 0; fitOffice(true); };
+  }
 }
 
 function go(view) {
@@ -126,16 +135,97 @@ function render() {
   renderOk();
 }
 
-// ------------------------------------------------------------------ office (live 3D office comes in the next milestone)
+// ------------------------------------------------------------------ office: live 3D office
+// View (zoom, drag) is kept for this tab, so a normal refresh keeps it; a hard refresh
+// (Ctrl+Shift+R) or a new tab starts at the default: zoomed in a little.
+const VKEY = 'aio.view';
+if ($('meta[name="fresh"]').content === '1') sessionStorage.removeItem(VKEY);
+const V = Object.assign({ zoom: 1.4, panX: 0, panY: 0 }, JSON.parse(sessionStorage.getItem(VKEY) || '{}'));
+const saveView = () => sessionStorage.setItem(VKEY, JSON.stringify(V));
+let office3d = null, scene = null, sceneKey = '', building = false, again = false;
+
 function renderOffice() {
-  const team = [`<div class="m">${paAv()}${esc(pa().name)}<span>PA, Manager</span></div>`,
-    ...S.staff.map((s) => `<div class="m" title="${esc(s.job)}">${av(s)}${esc(s.name)}<span>${esc(s.role)}</span></div>`)].join('');
-  $('#v-office').innerHTML = `<div class="officeWrap"><button class="okbtn" id="okStat"></button>
-    <div class="soon"><h2>${esc(S.office.company)}</h2>
-      <div class="muted">Talk to ${esc(pa().name)} in a terminal: open the office folder and run <code>claude</code>.<br>
-      The live office, where you see who is working, comes in the next update.</div>
-      <div class="team">${team}</div></div></div>`;
+  const v = $('#v-office');
+  if (!$('#officeWrap', v)) {
+    v.innerHTML = `<div class="officeWrap live" id="officeWrap"><button class="okbtn" id="okStat"></button><div id="termBar"></div>
+      <div class="officeStage" id="officeStage"></div><div class="loading" id="oLoad">Opening the office...</div></div>`;
+    wireOffice();
+  }
+  const b = S.status.banner;
+  $('#termBar').innerHTML = b ? `<div class="termbar">${icon('circle-alert')}${esc(nameOf(b.who === 'pa' ? '' : b.who) || pa().name)} needs you in the terminal: ${esc(b.msg)}</div>` : '';
   renderOkButton();
+  draw3d();
+}
+
+// "Siti: quote for Kedai Ali" -> "Quote for Kedai Ali" (the tag already shows the name)
+function taskText(id, t) {
+  const n = id === 'pa' ? pa().name : (staffById(id) || {}).name;
+  const out = n && t ? t.replace(new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[:,-]\\s*`, 'i'), '') : t || '';
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+// Rebuild the 3D office only when something it shows has changed.
+async function draw3d() {
+  const open = S.inbox.filter((x) => x.status !== 'done').sort((a, b) => Number(a.ticket) - Number(b.ticket));
+  const opts = {
+    company: S.office.company,
+    pa: { name: pa().name, colour: pa().colour, look: pa().look || { scarf: true, skin: '#F2C9A0' } },
+    staff: S.staff.map(({ id, name, role, colour, look }) => ({ id, name, role, colour, look })),
+    status: Object.fromEntries(Object.entries(S.status.people).map(([k, x]) => [k, { status: x.status, task: taskText(k, x.task) }])),
+    queue: open.slice(0, 3).map((x) => ({ text: (x.text || '').split('\n')[0], ticket: x.ticket })),
+    queueCount: open.length,
+  };
+  const key = JSON.stringify(opts);
+  if (key === sceneKey) return;
+  if (building) { again = true; return; }
+  building = true; sceneKey = key;
+  try {
+    office3d = office3d || await import('./office3d.js');
+    const inner = document.createElement('div');
+    const r = await office3d.renderOffice(inner, { ...opts, width: 900, dpr: Math.min(3, (window.devicePixelRatio || 1) * 2) });
+    const stage = $('#officeStage'); if (!stage) return;
+    if (scene) scene.dispose();
+    stage.replaceChildren(inner); scene = r;
+    stage.style.width = `${r.width}px`; stage.style.height = `${r.height}px`;
+    $$('.tag[data-id]', inner).forEach((t) => { t.onclick = () => { S.sel.staff = t.dataset.id; S.staffSeg = 'active'; go('staff'); }; });
+    const l = $('#oLoad'); if (l) l.remove();
+    fitOffice();
+  } catch (e) {
+    console.error(e);
+    const l = $('#oLoad'); if (l) l.textContent = 'This browser cannot show the 3D office. Everything else works.';
+  } finally {
+    building = false;
+    if (again) { again = false; draw3d(); }
+  }
+}
+
+function fitOffice(animate) {
+  const stage = $('#officeStage'), wrap = $('#officeWrap');
+  if (!stage || !scene || !wrap.offsetWidth) return;
+  const base = Math.min(wrap.clientWidth / scene.width, wrap.clientHeight / scene.height) * 0.94;
+  stage.style.transition = animate ? 'transform .25s ease' : 'none';
+  stage.style.transform = `translate(calc(-50% + ${V.panX.toFixed(1)}px), calc(-50% + ${V.panY.toFixed(1)}px)) scale(${(base * V.zoom).toFixed(4)})`;
+  const pct = $('#zPct'); if (pct) pct.textContent = `${Math.round(V.zoom * 100)}%`;
+  saveView();
+}
+function zoomAt(z, cx, cy) { // keep the point under the cursor still
+  const r = $('#officeWrap').getBoundingClientRect();
+  const nz = Math.max(0.5, Math.min(4, z)); if (nz === V.zoom) return;
+  const ox = (cx ?? r.left + r.width / 2) - (r.left + r.width / 2) - V.panX, oy = (cy ?? r.top + r.height / 2) - (r.top + r.height / 2) - V.panY;
+  V.panX -= ox * (nz / V.zoom - 1); V.panY -= oy * (nz / V.zoom - 1); V.zoom = nz; fitOffice();
+}
+function wireOffice() {
+  const wrap = $('#officeWrap');
+  wrap.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(V.zoom * Math.pow(1.0015, -e.deltaY), e.clientX, e.clientY); }, { passive: false });
+  wrap.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.tag[data-id],.okbtn,.termbar')) return;
+    const sx = e.clientX - V.panX, sy = e.clientY - V.panY;
+    wrap.setPointerCapture(e.pointerId); wrap.classList.add('panning');
+    const mv = (ev) => { V.panX = ev.clientX - sx; V.panY = ev.clientY - sy; fitOffice(); };
+    const up = () => { wrap.classList.remove('panning'); wrap.removeEventListener('pointermove', mv); wrap.removeEventListener('pointerup', up); };
+    wrap.addEventListener('pointermove', mv); wrap.addEventListener('pointerup', up);
+  });
+  new ResizeObserver(() => fitOffice()).observe(wrap);
 }
 
 // ------------------------------------------------------------------ approvals drawer
@@ -187,9 +277,12 @@ function renderStaff() {
   const invChip = (id) => (inv && inv.enabled && (inv.staff || []).includes(id) ? '<span class="ichip" title="Works with Invois Online"><img src="assets/invois-icon.png" alt="">Invois</span>' : '');
 
   if (S.staffSeg === 'active') {
-    $('#staffList').innerHTML = `<table><thead><tr><th>Name</th><th>Role</th><th>What they do</th><th>Folder</th></tr></thead><tbody>
-      <tr data-who="pa" class="${S.sel.staff === 'pa' ? 'sel' : ''}"><td><span class="who">${paAv()}${esc(pa().name)} ${MGR}</span></td><td>PA</td><td class="muted">Hands out work, checks results, reports to you</td><td class="mono muted">CLAUDE.md</td></tr>
-      ${S.staff.map((s) => `<tr data-who="${esc(s.id)}" class="${S.sel.staff === s.id ? 'sel' : ''}"><td><span class="who">${av(s)}${esc(s.name)}</span></td><td><span style="display:inline-flex;align-items:center;gap:6px"><i class="d" style="border-radius:2px;background:${esc(s.colour)}"></i>${esc(s.role)}</span>${invChip(s.id)}</td><td class="muted">${esc(s.job)}</td><td class="mono muted">staff/${esc(s.id)}/</td></tr>`).join('')}
+    const LAB = { working: 'Working', sleeping: 'Sleeping', waiting: 'Waiting for OK' };
+    const stCells = (id) => { const x = S.status.people[id] || { status: 'sleeping' };
+      return `<td><span class="badge ${x.status}"><i class="d ${x.status}"></i>${LAB[x.status]}</span></td><td class="muted" style="max-width:260px">${esc(x.status === 'working' ? taskText(id, x.task) : '') || '-'}</td><td class="muted">${x.last ? when(x.last) : '-'}</td>`; };
+    $('#staffList').innerHTML = `<table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Now doing</th><th>Last active</th></tr></thead><tbody>
+      <tr data-who="pa" class="${S.sel.staff === 'pa' ? 'sel' : ''}"><td><span class="who">${paAv()}${esc(pa().name)} ${MGR}</span></td><td>PA</td>${stCells('pa')}</tr>
+      ${S.staff.map((s) => `<tr data-who="${esc(s.id)}" class="${S.sel.staff === s.id ? 'sel' : ''}" title="${esc(s.job)}"><td><span class="who">${av(s)}${esc(s.name)}</span></td><td><span style="display:inline-flex;align-items:center;gap:6px"><i class="d" style="border-radius:2px;background:${esc(s.colour)}"></i>${esc(s.role)}</span>${invChip(s.id)}</td>${stCells(s.id)}</tr>`).join('')}
       </tbody></table>`;
     $$('#staffList tr[data-who]').forEach((tr) => { tr.onclick = () => { if (S.dirty.has('staff') && !confirm('Discard your unsaved changes?')) return; S.dirty.delete('staff'); S.sel.staff = tr.dataset.who; renderStaff(); }; });
   } else {
@@ -448,6 +541,12 @@ async function refresh(areas) {
 function live() {
   let fails = 0, bar = null;
   const es = new EventSource(`/api/stream?key=${encodeURIComponent(KEY)}`);
+  es.addEventListener('status', (e) => {
+    S.status = JSON.parse(e.data);
+    renderTop();
+    if (S.view === 'office') renderOffice();
+    if (S.view === 'staff' && $('#staffList')) renderStaff();
+  });
   es.addEventListener('changed', (e) => {
     const areas = JSON.parse(e.data).map((a) => (a === 'office' ? ['office', 'staff'] : a === 'staff' ? ['staff', 'office'] : [a])).flat();
     refresh([...new Set(areas)].filter((a) => a !== 'events')).catch(() => {});
@@ -459,7 +558,7 @@ function live() {
 }
 
 (async () => {
-  try { await load(); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
+  try { await load(); S.status = await api('status'); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
   go(location.hash.slice(1) || 'office');
   live();
 })();
