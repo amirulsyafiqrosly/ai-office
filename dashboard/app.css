@@ -46,6 +46,9 @@ input,textarea,select{font:inherit;color:inherit}
 
 /* views and split panes */
 .view{position:absolute;top:80px;left:0;right:0;bottom:0;padding:8px;display:none;transition:right .25s ease}
+/* pages end above the chat bar (a minimised chat is 40px) and left of the chat avatars, so their buttons stay clickable; the office can sit behind them */
+.view:not(#v-office){bottom:44px;right:66px}
+body.ok-open .view:not(#v-office){right:446px}
 .view.on{display:flex}
 body.ok-open .view{right:380px}
 body.ok-open .sub{margin-right:380px}
