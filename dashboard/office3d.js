@@ -231,10 +231,11 @@ export async function buildOffice(opt = {}) {
     B(x - 0.35, y + 0.05, 0, 0.1, 1.05, 0.78, '#D9DDE8', 0.02);
     B(x + 1.75, y + 0.05, 0, 0.1, 1.05, 0.78, '#D9DDE8', 0.02);
     B(x - 0.3, y + 0.95, 0.12, 2.1, 0.08, 0.62, col, 0.03);
-    laptop(x + 0.38, y + 0.08, 0.86);
-    mug(x + 1.55, y + 0.65, 0.86, '#FFFFFF');
-    B(x - 0.25, y + 0.5, 0.86, 0.5, 0.38, 0.05, '#FFE08A', 0.01);
-    B(x - 0.2, y + 0.52, 0.91, 0.46, 0.34, 0.03, '#FFFFFF', 0.01);
+    // laptop to the left of the seat, so the camera can see the typing hand on the right
+    laptop(x - 0.12, y + 0.08, 0.86);
+    mug(x + 1.72, y + 0.62, 0.86, '#FFFFFF');
+    B(x + 1.0, y + 0.4, 0.86, 0.5, 0.38, 0.05, '#FFE08A', 0.01);
+    B(x + 1.05, y + 0.42, 0.91, 0.46, 0.34, 0.03, '#FFFFFF', 0.01);
     chair(x + 0.75, y - 0.45);
   }
 
@@ -334,7 +335,7 @@ export async function buildOffice(opt = {}) {
   planeZ(1.7, 2.9, 0.2, 0.56, 2.505, texMat(bossTex, { transparent: true }));
   B(1.25, 1.5, 0.88, 0.75, 0.55, 0.12, '#FFB703', 0.03);
   B(1.32, 1.55, 0.98, 0.62, 0.45, 0.1, '#FFFFFF', 0.01);
-  laptop(2.25, 1.45, 0.88, '#9F7AEA');
+  laptop(1.55, 1.45, 0.88, '#9F7AEA');
   mug(3.3, 2.2, 0.88, '#FFD166');
   chair(2.1, 0.92, '#3D2A6B');
   const youA = person(2.1, 0.92, { seated: true, shirt: BOSS.colour, skin: BOSS.skin, hair: BOSS.hair, rot: 0.3 });
@@ -379,7 +380,7 @@ export async function buildOffice(opt = {}) {
   B(0.85, CY + 0.5, 1.05, 4.5, 1.0, 0.08, '#FFF5F2', 0.03);
   const csTex = canvasTex(1100, 140, (g, w, h) => { g.fillStyle = '#fff'; g.font = '700 92px Fredoka'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('CUSTOMER SERVICE', w / 2, h / 2 + 6); });
   planeZ(1.2, 5.0, 0.42, 0.86, CY + 1.455, texMat(csTex, { transparent: true }));
-  laptop(2.2, CY + 0.6, 1.13);
+  laptop(1.6, CY + 0.6, 1.13);
   SPH(4.6, CY + 1.15, 1.13, 0.1, '#FFC53D', { m: 0.6, r: 0.3 }); CYL(4.6, CY + 1.15, 1.13, 0.13, 0.13, 0.02, '#C98B4F', 16);
   plant(5.45, D + 0.75, 0.9);
 
@@ -538,7 +539,7 @@ export async function renderOffice(container, opt = {}) {
   // a report waits until the PA is back at her desk, so they do not cross paths
   const report = (id) => { const pa = rigs.get('pa'), r = rigs.get(id); if (pa && r && r !== pa && r.queue.length < 12) visitPerson(r, pa, 2.2, `Reporting to ${nameOf('pa')}`, pa); };
 
-  const SPEED = 2.2;
+  const SPEED = 3.2;
   const idle = (r) => !r.step && !r.queue.length;
   function runStep(r, dt) {
     const st = r.step;
@@ -550,7 +551,7 @@ export async function renderOffice(container, opt = {}) {
       r.act = 'walk';
       if (dist < 0.03) { p.x = st.to.x; p.z = st.to.z; return true; }
       r.root.rotation.y = angLerp(r.root.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 10));
-      const k = Math.min(dist, SPEED * dt); p.x += dx / dist * k; p.z += dz / dist * k; r.phase += dt * 9;
+      const k = Math.min(dist, SPEED * dt); p.x += dx / dist * k; p.z += dz / dist * k; r.phase += dt * 13;
       return false;
     }
     if (st.type === 'face' || st.type === 'turn') {
@@ -576,6 +577,11 @@ export async function renderOffice(container, opt = {}) {
       if (!moving && r.kind !== 'customer') {
         r.act = r.mood === 'working' ? 'type' : r.mood === 'waiting' ? 'raise' : 'rest';
         if (r.mood === 'working' && r.kind !== 'boss' && (r.nextStand -= dt) < 0) { r.nextStand = 25 + Math.random() * 35; stretch(r); }
+        else if (r.mood === 'working' && (r.nextGesture = (r.nextGesture ?? 3 + Math.random() * 5) - dt) < 0) {
+          r.nextGesture = 5 + Math.random() * 5;
+          const g = ['think', 'point', 'stretch'][Math.floor(Math.random() * 3)];
+          r.queue.push({ type: 'pose', act: g, time: g === 'stretch' ? 1.1 : 1.6 + Math.random() });
+        }
       }
       if (r.kind === 'customer' && !moving) r.act = r.wave ? 'raise' : 'idle';
       if ((r.nextLook -= dt) < 0) { r.nextLook = 1.2 + Math.random() * 3; r.headYT = r.mood === 'sleeping' && r.kind !== 'customer' ? 0 : (Math.random() - 0.5) * 1.3; }
@@ -586,20 +592,25 @@ export async function renderOffice(container, opt = {}) {
   }
 
   function pose(r, dt) {
-    const k = Math.min(1, dt * 8), sleeping = r.mood === 'sleeping' && r.kind !== 'customer' && !r.step && !r.queue.length;
+    const k = Math.min(1, dt * 14), sleeping = r.mood === 'sleeping' && r.kind !== 'customer' && !r.step && !r.queue.length;
     // body height and legs: sitting (legs forward) to standing (legs down), swinging when walking
     r.body.position.y = 0.12 * r.stand;
-    const swing = r.act === 'walk' ? Math.sin(r.phase) * 0.55 : 0;
+    const swing = r.act === 'walk' ? Math.sin(r.phase) * 0.7 : 0;
     r.hips[0].rotation.x = lerp(-Math.PI / 2, 0, r.stand) + swing;
     r.hips[1].rotation.x = lerp(-Math.PI / 2, 0, r.stand) - swing;
     r.hips.forEach((h) => { h.scale.y = lerp(0.85, 1, r.stand); });
     // arms
     const T = r.t;
     let L = { x: 0, z: -0.12 }, R = { x: 0, z: 0.12 };
-    if (r.act === 'type') { L = { x: -1.15 + Math.sin(T * 14) * 0.07, z: 0.28 }; R = { x: -1.15 + Math.sin(T * 14 + 2) * 0.07, z: -0.28 }; }
+    if (r.act === 'type') { // clear, alternating strokes on the keyboard
+      L = { x: -1.35 + Math.sin(T * 8) * 0.32, z: 0.28 + Math.sin(T * 4) * 0.12 };
+      R = { x: -1.35 + Math.sin(T * 8 + Math.PI) * 0.32, z: -0.28 - Math.sin(T * 4 + 1) * 0.12 };
+    }
+    else if (r.act === 'think') { L = { x: -1.1, z: 0.3 }; R = { x: -2.35 + Math.sin(T * 3) * 0.08, z: -0.45 }; } // hand to chin
+    else if (r.act === 'point') { L = { x: -1.1, z: 0.3 }; R = { x: -1.55 + Math.sin(T * 6) * 0.12, z: -0.05 }; } // at the screen
     else if (r.act === 'rest') { L = { x: -1.3, z: 0.4 }; R = { x: -1.3, z: -0.4 }; }
-    else if (r.act === 'walk') { L = { x: -swing * 0.8, z: -0.1 }; R = { x: swing * 0.8, z: 0.1 }; }
-    else if (r.act === 'talk') { R = { x: -0.95 + Math.sin(T * 5) * 0.25, z: -0.15 }; }
+    else if (r.act === 'walk') { L = { x: -swing * 1.15, z: -0.12 }; R = { x: swing * 1.15, z: 0.12 }; }
+    else if (r.act === 'talk') { L = { x: -0.7 + Math.sin(T * 4 + 1) * 0.3, z: -0.2 }; R = { x: -1.05 + Math.sin(T * 5) * 0.45, z: -0.25 + Math.sin(T * 2.5) * 0.15 }; }
     else if (r.act === 'raise') { R = { x: 0, z: 2.65 + Math.sin(T * 6) * 0.15 }; }
     else if (r.act === 'stretch') { L = { x: 0, z: -2.7 }; R = { x: 0, z: 2.7 }; }
     r.armL.x = lerp(r.armL.x, L.x, k); r.armL.z = lerp(r.armL.z, L.z, k);
