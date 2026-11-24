@@ -176,10 +176,12 @@ body.ok-open #okDrawer{transform:none}
 .okn.zero{background:#4ADE80;color:#053B1C}
 .okhead .ibtn{margin-left:auto;color:#fff}
 .okhead .ibtn:hover{background:rgba(255,255,255,.18);color:#fff}
+.oktabs{flex:none;padding:8px 14px;border-bottom:1px solid var(--line2)}
+.oktabs .seg{display:inline-flex}
 .okbody{flex:1;min-height:0;overflow:auto}
 .oksec{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);padding:12px 14px 4px}
 .oki{padding:12px 14px;border-bottom:1px solid var(--line2)}
-.oki.done{opacity:.6}
+.oki.done{opacity:.85}
 .okh2{display:flex;align-items:center;gap:7px;font-size:12px}
 .okh2 b{font-weight:600}
 .okh2 .proj{margin-left:auto;font-size:11px;color:var(--muted);background:var(--line2);border-radius:var(--rs);padding:1px 6px}

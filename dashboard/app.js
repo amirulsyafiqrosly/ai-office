@@ -271,10 +271,16 @@ function okItem(a) {
 function renderOk() {
   document.body.classList.toggle('ok-open', S.okOpen);
   const n = pendingOks().length;
-  const decided = S.approvals.filter((a) => a.status !== 'pending').slice(0, 10);
+  // newest decision first; only what still needs the boss stays on the first tab
+  const decided = S.approvals.filter((a) => a.status !== 'pending').sort((a, b) => String(b.decided || '').localeCompare(String(a.decided || '')));
+  const tab = S.okTab || 'waiting';
+  const body = tab === 'waiting'
+    ? (n ? pendingOks().map(okItem).join('') : `<div class="okempty">${icon('party-popper')}All clear. Nothing waiting for you.</div>`)
+    : (decided.length ? decided.slice(0, 100).map(okItem).join('') + (decided.length > 100 ? `<div class="okempty">Showing the latest 100. All decisions are kept in approvals/.</div>` : '') : `<div class="okempty">${icon('clock')}No decisions yet.</div>`);
   $('#okDrawer').innerHTML = `<div class="okhead"><span class="okicon">${icon('hand')}</span>Needs your OK<span class="okn ${n ? '' : 'zero'}">${n}</span><button class="ibtn" data-oktoggle title="Close">${icon('x')}</button></div>
-    <div class="okbody">${n ? pendingOks().map(okItem).join('') : `<div class="okempty">${icon('party-popper')}All clear. Nothing waiting for you.</div>`}
-    ${decided.length ? `<div class="oksec">Decided</div>${decided.map(okItem).join('')}` : ''}</div>`;
+    <div class="oktabs"><div class="seg"><button class="${tab === 'waiting' ? 'on' : ''}" data-oktab="waiting">Waiting <span>${n}</span></button><button class="${tab === 'history' ? 'on' : ''}" data-oktab="history">History <span>${decided.length}</span></button></div></div>
+    <div class="okbody">${body}</div>`;
+  $$('[data-oktab]', $('#okDrawer')).forEach((b) => { b.onclick = () => { S.okTab = b.dataset.oktab; renderOk(); }; });
   renderOkButton();
 }
 
