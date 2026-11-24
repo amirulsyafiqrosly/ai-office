@@ -177,17 +177,19 @@ async function draw3d() {
     queue: open.slice(0, 3).map((x) => ({ text: (x.text || '').split('\n')[0], ticket: x.ticket })),
     queueCount: open.length,
   };
-  const key = JSON.stringify(opts);
-  if (key === sceneKey) return;
+  const { status, ...layout } = opts;
+  const key = JSON.stringify(layout); // people, company, queue: a rebuild. Status alone: the live scene updates.
+  if (key === sceneKey) { if (scene && !building) { scene.setStatus(status); walks(); } return; }
   if (building) { again = true; return; }
   building = true; sceneKey = key;
   try {
     office3d = office3d || await import('./office3d.js');
     const inner = document.createElement('div');
-    const r = await office3d.renderOffice(inner, { ...opts, width: 900, dpr: Math.min(3, (window.devicePixelRatio || 1) * 2) });
+    const r = await office3d.renderOffice(inner, { ...opts, width: 900, dpr: Math.min(2.5, (window.devicePixelRatio || 1) * 1.75) });
     const stage = $('#officeStage'); if (!stage) return;
     if (scene) scene.dispose();
     stage.replaceChildren(inner); scene = r;
+    prevPeople = null; walks();
     stage.style.width = `${r.width}px`; stage.style.height = `${r.height}px`;
     $$('.tag[data-id]', inner).forEach((t) => { t.onclick = () => openChat(t.dataset.id); });
     const l = $('#oLoad'); if (l) l.remove();
@@ -199,6 +201,21 @@ async function draw3d() {
     building = false;
     if (again) { again = false; draw3d(); }
   }
+}
+
+// Someone starts a task Hana handed out: she walks over. Someone finishes: they walk to her and report.
+let prevPeople = null;
+function walks() {
+  const now = S.status.people;
+  const handed = (x) => x && x.status === 'working' && x.task !== 'Talking with you';
+  if (prevPeople && scene && S.view === 'office') {
+    for (const s of S.staff) {
+      const a = prevPeople[s.id], b = now[s.id];
+      if (!handed(a) && handed(b) && now.pa && now.pa.status === 'working') scene.delegate(s.id);
+      if (handed(a) && (!b || b.status !== 'working')) scene.report(s.id);
+    }
+  }
+  prevPeople = JSON.parse(JSON.stringify(now));
 }
 
 function fitOffice(animate) {
