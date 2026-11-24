@@ -9,6 +9,15 @@ const D = require('../lib/defaults');
 const { createServer } = require('../lib/server');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-office-srv-'));
+// a fake "claude", so briefing the PA (after an approval) never runs the real one in tests
+const bin = path.join(tmp, 'bin'); fs.mkdirSync(bin);
+const fake = "process.stdout.write(JSON.stringify({ type: 'result', subtype: 'success', is_error: false }) + '\\n');";
+if (process.platform === 'win32') {
+  fs.writeFileSync(path.join(bin, 'claude.cmd'), '@echo off\r\n');
+  fs.mkdirSync(path.join(bin, 'node_modules', '@anthropic-ai', 'claude-code'), { recursive: true });
+  fs.writeFileSync(path.join(bin, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'), fake);
+} else fs.writeFileSync(path.join(bin, 'claude'), `#!${process.execPath}\n${fake}`, { mode: 0o755 });
+process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
 const dir = path.join(tmp, 'office');
 const cfg = G.buildConfig({ company: 'Kedai Ali', pa: 'Hana', staff: D.STAFF.slice(0, 3).map(({ name, role, job }) => ({ name, role, job })) });
 G.writeOffice(dir, cfg);
@@ -111,6 +120,7 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     });
 
     await test('clean up: needs CLEAR, clears only what was picked, never the staff setup', async () => {
+      await new Promise((res) => setTimeout(res, 800)); // the PA's short briefing after the approval ends first
       fs.writeFileSync(path.join(dir, 'staff/siti/quote.md'), 'x');
       fs.appendFileSync(path.join(dir, '.office/events.jsonl'), '{"ev":"Stop"}\n');
       assert.strictEqual((await req('POST', '/api/cleanup', { items: ['inbox'], confirm: 'yes' })).status, 400);

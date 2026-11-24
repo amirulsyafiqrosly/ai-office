@@ -63,11 +63,12 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.deepStrictEqual(states, [['pa', true], ['pa', false]]);
     const c = calls()[0];
     assert.strictEqual(path.resolve(c.cwd), path.resolve(dir));
-    assert.ok(c.args.includes('--tools') && c.args[c.args.indexOf('--tools') + 1] === 'Agent,Read,Write,Edit,Glob,Grep');
+    assert.ok(c.args.includes('--tools') && c.args[c.args.indexOf('--tools') + 1] === 'Read,Write,Edit,Glob,Grep', 'no Agent tool: staff work runs as tasks');
     assert.strictEqual(c.args[c.args.indexOf('--permission-mode') + 1], 'default');
     const allowed = c.args[c.args.indexOf('--allowedTools') + 1].split(',');
     assert.ok(!allowed.includes('Read') && !allowed.includes('Write') && !allowed.includes('Edit'), 'file tools never allowed everywhere');
-    assert.deepStrictEqual(allowed, ['Agent', ...require('../lib/templates').officeRules(dir)]);
+    assert.deepStrictEqual(allowed, require('../lib/templates').officeRules(dir));
+    assert.match(c.args[c.args.indexOf('--append-system-prompt') + 1], /create one task file/);
     assert.match(c.args[c.args.indexOf('--append-system-prompt') + 1], /only inside the office folder/);
     assert.ok(!c.args.includes('--resume'));
   });
@@ -79,10 +80,13 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.strictEqual(c.args[c.args.indexOf('--resume') + 1], 'sess-1');
   });
 
-  await test('one message at a time per chat', async () => {
+  await test('a message sent while replying waits, then runs next', async () => {
     chats.send('siti', 'SLOW please');
-    assert.throws(() => chats.send('siti', 'again'), /Still working/);
+    assert.deepStrictEqual(chats.send('siti', 'and another thing'), { ok: true, queued: true });
     await idle('siti');
+    const last2 = calls().slice(-2).map((x) => x.args[x.args.indexOf('-p') + 1]);
+    assert.deepStrictEqual(last2, ['SLOW please', 'and another thing']);
+    assert.ok(states.filter(([id]) => id === 'siti').length === 2, 'busy once, idle once: no flicker between the two');
   });
 
   await test('staff chat runs in the staff folder and leaves a summary for the PA', async () => {
@@ -108,7 +112,7 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     const c = calls().pop();
     const allowed = c.args[c.args.indexOf('--allowedTools') + 1].split(',');
     const T = require('../lib/templates');
-    assert.deepStrictEqual(allowed, ['Agent', ...T.officeRules(dir), ...T.officeRules(ext)]);
+    assert.deepStrictEqual(allowed, [...T.officeRules(dir), ...T.officeRules(ext)]);
     assert.strictEqual(c.args[c.args.indexOf('--add-dir') + 1], ext);
     assert.ok(c.args[c.args.indexOf('--append-system-prompt') + 1].includes(ext));
   });

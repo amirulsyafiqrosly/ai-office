@@ -531,6 +531,7 @@ function renderSettings() {
     ['summaries', true, `Staff chat summaries for ${pa().name}`, '.office/staff-chats.md is reset to empty.'],
     ['inbox', false, 'Inbox items', 'Every customer request in inbox/.'],
     ['approvals', false, 'Approvals', 'Waiting and decided approvals in approvals/.'],
+    ['tasks', false, 'Task history', 'Finished and stopped tasks in tasks/ (running ones are stopped first by you).'],
     ['projects', false, 'Projects', 'Every project folder in projects/, with its files and notes.'],
     ['staffFiles', false, 'Staff work files', "Files staff made in their folders (quotes, drafts, price lists). Their job description and rules stay."],
   ];
@@ -619,7 +620,7 @@ function toggleMin(id) { V.min = V.min.includes(id) ? V.min.filter((x) => x !== 
 async function sendChat(id, text) {
   const t = String(text || '').trim(); if (!t) return;
   await openChat(id);
-  try { await api(`chat/${id}`, 'POST', { text: t }); chatOf(id).running = true; renderChats(); return true; } catch (e) { toast(e.message, true); return false; }
+  try { const r = await api(`chat/${id}`, 'POST', { text: t }); chatOf(id).running = true; if (r.queued) toast(`${personOf(id).name} will read it right after this reply`); renderChats(); return true; } catch (e) { toast(e.message, true); return false; }
 }
 
 function msgHtml(id, m) {
@@ -657,7 +658,7 @@ function renderChats() {
         <div class="wf"><div class="box"><textarea rows="1" placeholder="Message ${esc(personOf(id).name)}..."></textarea><button class="btn pri send" title="Send">${icon('arrow-up')}</button></div>
         ${id !== 'pa' ? `<div class="cc">${icon('eye')}${esc(pa().name)} gets a summary of this chat</div>` : ''}</div>`;
       const ta = $('textarea', w);
-      const send = async () => { const t = ta.value; if (!t.trim() || chatOf(id).running) return; ta.value = ''; ta.style.height = ''; if (!(await sendChat(id, t))) ta.value = t; };
+      const send = async () => { const t = ta.value; if (!t.trim()) return; ta.value = ''; ta.style.height = ''; if (!(await sendChat(id, t))) ta.value = t; };
       ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
       ta.oninput = () => { ta.style.height = 'auto'; ta.style.height = `${Math.min(120, ta.scrollHeight)}px`; };
       $('.send', w).onclick = send;
@@ -668,24 +669,26 @@ function renderChats() {
     w.classList.toggle('min', V.min.includes(id));
     $('.wh', w).innerHTML = `${av(p)}<b>${esc(p.name)}</b>${id === 'pa' ? MGR : ''}<span class="badge ${st}" style="height:18px;font-size:11px"><i class="d ${st}"></i>${SLAB[st]}</span><div class="acts"><button class="ibtn" data-newchat="${esc(id)}" title="New conversation (${esc(p.name)} starts fresh; this chat stays above)">${icon('refresh-cw')}</button><button class="ibtn" data-min="${esc(id)}" title="Minimise">${icon('minus')}</button><button class="ibtn" data-close="${esc(id)}" title="Close">${icon('x')}</button></div>`;
     const waits = id === 'pa' ? [] : pendingOks().filter((a) => a.from === id);
-    $('.wstrips', w).innerHTML = waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
+    const work = id === 'pa' ? (S.tasks || []) : (S.tasks || []).filter((t) => t.staff === id);
+    $('.wstrips', w).innerHTML = work.map((t) => `<div class="wstrip work">${icon('clock')}<div class="sq"><b>Working now</b>${esc((personOf(t.staff) || { name: t.staff }).name)}: ${esc(t.title || t.id)}</div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`).join('') + waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
     const body = $('.wb', w);
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
     const intro = id === 'pa' ? `${esc(p.name)} is your PA and manager. Tell her what you need; she hands it to the right staff.` : `Direct chat with ${esc(p.name)} (${esc(p.role)}).`;
-    body.innerHTML = `<div class="wsys">${intro}</div>${c.messages.map((m) => msgHtml(id, m)).join('')}${c.running ? `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(p.name)} is working<button class="btn sm" data-stop="${esc(id)}">Stop</button></div>` : ''}`;
+    body.innerHTML = `<div class="wsys">${intro}</div>${c.messages.map((m) => msgHtml(id, m)).join('')}${c.running ? `<div class="typing"><span class="dots"><i></i><i></i><i></i></span>${esc(p.name)} is replying<button class="btn sm" data-stop="${esc(id)}">Stop</button></div>` : ''}`;
     if (atEnd || !body.dataset.seen) { body.scrollTop = body.scrollHeight; body.dataset.seen = '1'; }
-    $('.send', w).disabled = c.running;
+    $('textarea', w).placeholder = c.running ? `Message ${p.name}... (goes next, after this reply)` : `Message ${p.name}...`;
   });
   if (S.view === 'office') fitOffice();
 }
 
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-chat],[data-close],[data-min],[data-stop],[data-ask],[data-newchat],[data-copy]');
+  const t = e.target.closest('[data-chat],[data-close],[data-min],[data-stop],[data-ask],[data-newchat],[data-copy],[data-stoptask]');
   if (!t) return;
   if (t.dataset.chat) { const id = t.dataset.chat; if (V.open[0] === id && !V.min.includes(id)) closeChat(id); else openChat(id); }
   else if (t.dataset.close) { e.stopPropagation(); closeChat(t.dataset.close); }
   else if (t.dataset.min) { e.stopPropagation(); toggleMin(t.dataset.min); }
   else if (t.dataset.stop) api(`chat/${t.dataset.stop}/stop`, 'POST').catch((er) => toast(er.message, true));
+  else if (t.dataset.stoptask) api(`tasks/${encodeURIComponent(t.dataset.stoptask)}/stop`, 'POST').then(() => toast('Task stopped'), (er) => toast(er.message, true));
   else if (t.dataset.newchat) { e.stopPropagation(); api(`chat/${t.dataset.newchat}/new`, 'POST').then(() => toast('New conversation started'), (er) => toast(er.message, true)); }
   else if (t.hasAttribute('data-copy')) {
     const code = t.parentElement.querySelector('code').textContent;
@@ -744,6 +747,7 @@ function live() {
       render();
     });
   });
+  es.addEventListener('tasks', (e) => { const act = JSON.parse(e.data); api('tasks').then((r) => { S.tasks = r.active.map((a) => ({ ...a, ...(r.list.find((t) => t.id === a.id) || {}) })); renderChats(); }).catch(() => {}); S.tasks = act; renderChats(); });
   es.addEventListener('chatstate', (e) => { const { id, running } = JSON.parse(e.data); chatOf(id).running = running; renderChats(); });
   es.addEventListener('changed', (e) => {
     const areas = JSON.parse(e.data).map((a) => (a === 'office' ? ['office', 'staff'] : a === 'staff' ? ['staff', 'office'] : [a])).flat();
@@ -758,6 +762,8 @@ function live() {
 (async () => {
   try { await load(); S.status = await api('status'); S.presets = await api('presets'); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
   const run = await api('chats').catch(() => ({ running: [] }));
+  const tk = await api('tasks').catch(() => ({ active: [], list: [] }));
+  S.tasks = tk.active.map((a) => ({ ...a, ...(tk.list.find((t) => t.id === a.id) || {}) }));
   run.running.forEach((id) => { chatOf(id).running = true; });
   go(location.hash.slice(1) || 'office');
   await Promise.all(V.open.map(async (id) => { if (!personOf(id)) return; const h = await api(`chat/${id}`).catch(() => null); if (h) Object.assign(chatOf(id), { messages: h.messages, running: h.running, loaded: true }); }));
