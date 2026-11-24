@@ -6,6 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const G = require('../lib/generate');
 const D = require('../lib/defaults');
+const T = require('../lib/templates');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-office-test-'));
 const read = (...p) => fs.readFileSync(path.join(...p), 'utf8');
@@ -51,23 +52,47 @@ test('never overwrites existing files', () => {
   assert.ok(res.skipped.includes('CLAUDE.md'));
 });
 
-test('repairHooks fixes moved paths and keeps the user\'s own hooks', () => {
+test('repairSettings fixes moved paths and keeps the user\'s own hooks and rules', () => {
   const moved = path.join(tmp, 'moved');
   fs.renameSync(dir, moved);
   const f = path.join(moved, '.claude/settings.json');
   const s = JSON.parse(read(f));
   s.hooks.Stop.push({ hooks: [{ type: 'command', command: 'echo mine' }] });
   s.model = 'sonnet';
+  s.permissions.allow.push('Bash(git status)');
   fs.writeFileSync(f, JSON.stringify(s));
-  const fixed = G.repairHooks(moved);
+  const fixed = G.repairSettings(moved);
   assert.ok(fixed.includes('.claude/settings.json'));
   const after = JSON.parse(read(f));
   assert.strictEqual(after.model, 'sonnet');
+  assert.deepStrictEqual(after.permissions.allow, ['Bash(git status)', ...T.officeRules(moved)]);
   assert.ok(after.hooks.Stop.some((e) => e.hooks[0].command === 'echo mine'));
   const ours = after.hooks.Stop.filter((e) => e.hooks[0].command.includes('hook.js'));
   assert.strictEqual(ours.length, 1);
   assert.ok(ours[0].hooks[0].command.includes(path.join(moved, '.office', 'hook.js')));
-  assert.deepStrictEqual(G.repairHooks(moved), [], 'second repair changes nothing');
+  assert.deepStrictEqual(G.repairSettings(moved), [], 'second repair changes nothing');
+});
+
+test('file rules use Claude Code path form on each OS', () => {
+  assert.deepStrictEqual(T.officeRules('/home/a/my office', 'linux'), ['Read(//home/a/my office/**)', 'Edit(//home/a/my office/**)']);
+  assert.deepStrictEqual(T.officeRules('C:\\Users\\Ali\\kedai\\', 'win32'), ['Read(//c/Users/Ali/kedai/**)', 'Edit(//c/Users/Ali/kedai/**)']);
+  const st = JSON.parse(read(path.join(tmp, 'moved'), 'staff/aina/.claude/settings.json'));
+  assert.deepStrictEqual(st.permissions.allow, T.officeRules(path.join(tmp, 'moved')), 'staff folders allow the whole office');
+});
+
+test('answers file: defaults fill gaps, errors are plain', () => {
+  const bin = path.join(__dirname, '..', 'bin', 'ai-office.js');
+  const run = (ans) => { const f = path.join(tmp, 'ans.json'); fs.writeFileSync(f, JSON.stringify(ans));
+    return spawnSync(process.execPath, [bin, '--answers', f, '--skip-check'], { cwd: tmp, encoding: 'utf8' }); };
+  let r = run({ company: 'Kedai Ali', staff: [{ name: 'Siti' }, { name: 'Zul', role: 'Driver', job: 'Deliveries' }] });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const o = JSON.parse(read(tmp, 'kedai-ali/office.json'));
+  assert.deepStrictEqual(o.staff.map((x) => [x.id, x.role]), [['siti', 'Sales'], ['zul', 'Driver']]);
+  assert.strictEqual(o.pa.name, 'Hana');
+  r = run({ company: 'Kedai Ali' });
+  assert.strictEqual(r.status, 1); assert.match(r.stdout, /already has an office/);
+  r = run({ folder: './x', staff: [{ name: 'Bob' }] });
+  assert.strictEqual(r.status, 1); assert.match(r.stdout, /needs a role/);
 });
 
 test('hook.js appends one trimmed line per event', () => {

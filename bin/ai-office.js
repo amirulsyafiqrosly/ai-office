@@ -22,6 +22,7 @@ if (flag('--help') || flag('-h')) {
 Options:
   --dir <folder>    Office folder (default: ask)
   --yes             Accept every default, no questions
+  --answers <file>  Take the answers from a JSON file (see INSTALL.md)
   --version         Show the version`);
   process.exit(0);
 }
@@ -32,12 +33,12 @@ const here = path.resolve(value('--dir') || '.');
 
 (async () => {
   if (G.isOffice(here)) {
-    const fixed = G.repairHooks(here);
-    if (fixed.length) console.log(`Updated hook paths in: ${fixed.join(', ')}`);
+    const fixed = G.repairSettings(here);
+    if (fixed.length) console.log(`Updated office paths in: ${fixed.join(', ')}`);
     console.log('This folder is an AI office. The dashboard is not built yet (coming in the next milestone).');
     console.log('For now, run "claude" in this folder to talk to your PA.');
     return 0;
   }
   const { wizard } = require('../lib/wizard');
-  return wizard({ yes: flag('--yes'), dir: value('--dir'), skipCheck: flag('--skip-check') });
+  return wizard({ yes: flag('--yes'), dir: value('--dir'), answers: value('--answers'), skipCheck: flag('--skip-check') });
 })().then((code) => { process.exitCode = code || 0; }, (e) => { console.error(e.stack || e); process.exitCode = 1; });
