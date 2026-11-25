@@ -778,21 +778,32 @@ function workLine(work) {
 function renderWork() {
   let el = $('#work');
   if (!el) { el = document.createElement('div'); el.id = 'work'; document.body.append(el); }
-  const work = S.tasks || [], office = S.view === 'office';
-  if (!work.length) workPop = false;
-  el.hidden = !(work.length && (office || workPop));
+  const work = S.tasks || [], cut = S.interrupted || [], office = S.view === 'office';
+  if (!work.length && !cut.length) workPop = false;
+  el.hidden = !((work.length || cut.length) && (office || workPop));
   if (el.hidden) return;
   el.className = office ? `board${workMin ? ' min' : ''}` : 'pop';
   if (office) el.style.left = '';
   else { const r = $('#stat').getBoundingClientRect(); el.style.left = `${Math.max(8, Math.min(r.left - 10, innerWidth - 338))}px`; }
   const heads = [...new Set(work.map((t) => t.staff))].map(personOf).filter(Boolean).slice(0, 5).map((p) => av(p)).join('');
   const open = !office || !workMin;
-  el.innerHTML = `<div class="wkh" data-work="${office ? 'fold' : 'close'}" title="${office ? (open ? 'Fold' : 'Show the list') : 'Close'}"><i class="d working"></i><b>${work.length} working</b><span class="heads">${heads}</span>${icon(office ? 'chevron-down' : 'x')}</div>`
+  const label = [work.length ? `${work.length} working` : '', cut.length ? `${cut.length} interrupted` : ''].filter(Boolean).join(', ');
+  el.innerHTML = `<div class="wkh" data-work="${office ? 'fold' : 'close'}" title="${office ? (open ? 'Fold' : 'Show the list') : 'Close'}"><i class="d ${work.length ? 'working' : 'waiting'}"></i><b>${label}</b><span class="heads">${heads}</span>${icon(office ? 'chevron-down' : 'x')}</div>`
     + (open ? `<div class="wkl">${work.map((t) => {
       const p = personOf(t.staff) || { name: t.staff }, asked = t.from && t.from !== 'pa' && t.from !== t.staff ? personOf(t.from) : null;
       return `<div class="wk" data-task="${esc(t.id)}">${p.colour ? av(p) : ''}<div class="sq"><div class="l1"><b>${esc(p.name)}</b><span class="faint">${since(t.created)}</span></div><div class="ti">${esc(t.title || t.id)}${asked ? ` <span class="faint">(asked by ${esc(asked.name)})</span>` : ''}</div><span class="now">${esc(t.step || 'Starting')}</span></div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`;
-    }).join('')}</div>` : '');
+    }).join('')}${cut.length ? `<div class="wkcut">Stopped by a restart</div>${cut.map((t) => {
+      const p = personOf(t.staff) || { name: t.staff };
+      return `<div class="wk cut">${p.colour ? av(p, 'grey') : ''}<div class="sq"><div class="l1"><b>${esc(p.name)}</b><span class="faint">${t.finished ? when(t.finished) : ''}</span></div><div class="ti">${esc(t.title || t.id)}</div></div><div class="wkb"><button class="btn sm ok" data-rerun="${esc(t.id)}">Run again</button><button class="btn sm" data-dismiss="${esc(t.id)}">Dismiss</button></div></div>`;
+    }).join('')}` : ''}</div>` : '');
 }
+document.addEventListener('click', (e) => {
+  const r = e.target.closest('[data-rerun],[data-dismiss]'); if (!r) return;
+  r.disabled = true;
+  const id = r.dataset.rerun || r.dataset.dismiss;
+  api(`tasks/${encodeURIComponent(id)}/${r.dataset.rerun ? 'rerun' : 'dismiss'}`, 'POST')
+    .then(() => { S.interrupted = (S.interrupted || []).filter((t) => t.id !== id); renderWork(); toast(r.dataset.rerun ? 'Started again' : 'Dismissed'); }, (er) => { r.disabled = false; toast(er.message, true); });
+});
 setInterval(() => { if ($('#work') && !$('#work').hidden) renderWork(); renderUsage(); }, 30000);
 
 // ------------------------------------------------------------------ usage: plan limits and tokens (bottom left)
@@ -824,7 +835,7 @@ function renderUsage() {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-work],#stat');
   if (!t) { if (workPop && !e.target.closest('#work')) { workPop = false; renderWork(); } return; }
-  if (!(S.tasks || []).length) { toast('Nobody is working on a task right now'); return; }
+  if (!(S.tasks || []).length && !(S.interrupted || []).length) { toast('Nobody is working on a task right now'); return; }
   const want = t.id === 'stat' ? 'toggle' : t.dataset.work;
   if (S.view === 'office') workMin = want === 'open' ? false : !workMin;
   else workPop = want === 'open' ? true : want === 'close' ? false : !workPop;
@@ -905,7 +916,7 @@ function live() {
   });
   es.addEventListener('doctools', (e) => { S.doctools = JSON.parse(e.data); const l = $('.dtline'); if (l) l.outerHTML = docToolsLine(); }); // in place: keeps unsaved edits
   es.addEventListener('usage', (e) => { S.usage = JSON.parse(e.data); renderUsage(); });
-  es.addEventListener('tasks', (e) => { const act = JSON.parse(e.data); api('tasks').then((r) => { S.tasks = r.active.map((a) => ({ ...a, ...(r.list.find((t) => t.id === a.id) || {}) })); renderChats(); }).catch(() => {}); S.tasks = act; renderChats(); });
+  es.addEventListener('tasks', (e) => { const act = JSON.parse(e.data); api('tasks').then((r) => { S.tasks = r.active.map((a) => ({ ...a, ...(r.list.find((t) => t.id === a.id) || {}) })); S.interrupted = r.interrupted || []; renderChats(); }).catch(() => {}); S.tasks = act; renderChats(); });
   es.addEventListener('chatlive', (e) => { const { id, step, text } = JSON.parse(e.data); const c = chatOf(id); c.live = { step, text }; if (c.running && !c.since) c.since = Date.now(); renderLive(id); });
   es.addEventListener('taskstep', (e) => {
     const x = JSON.parse(e.data);
@@ -929,6 +940,7 @@ function live() {
   const run = await api('chats').catch(() => ({ running: [] }));
   const tk = await api('tasks').catch(() => ({ active: [], list: [] }));
   S.tasks = tk.active.map((a) => ({ ...a, ...(tk.list.find((t) => t.id === a.id) || {}) }));
+  S.interrupted = tk.interrupted || [];
   run.running.forEach((id) => { chatOf(id).running = true; });
   go(location.hash.slice(1) || 'office');
   await Promise.all(V.open.map(async (id) => { if (!personOf(id)) return; const h = await api(`chat/${id}`).catch(() => null); if (h) Object.assign(chatOf(id), { messages: h.messages, running: h.running, loaded: true }); }));

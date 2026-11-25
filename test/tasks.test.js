@@ -114,8 +114,24 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
 
   await test('after a restart, a task left "working" is marked stopped', async () => {
     put('t8', 'aina', 'half done'); fs.writeFileSync(path.join(dir, 'tasks', 't8.md'), fs.readFileSync(path.join(dir, 'tasks', 't8.md'), 'utf8').replace('status: new', 'status: working'));
-    tasks.recover();
+    const cut = tasks.recover();
     assert.strictEqual(tasks.read('t8').status, 'stopped');
+    assert.deepStrictEqual(cut.map((t) => t.id), ['t8']);
+    assert.deepStrictEqual(tasks.interrupted().map((t) => t.id), ['t8']);
+  });
+
+  await test('an interrupted task runs again as a new task with the same text, or is dismissed', async () => {
+    const r = tasks.rerun('t8');
+    assert.ok(r.ok && r.id !== 't8');
+    const again = tasks.read(r.id);
+    assert.strictEqual(again.staff, 'aina'); assert.strictEqual(again.again, 't8');
+    assert.strictEqual(again.task, tasks.read('t8').task);
+    assert.deepStrictEqual(tasks.interrupted(), [], 'no longer listed');
+    await new Promise((ok) => { const w = setInterval(() => { if (tasks.read(r.id).status === 'done') { clearInterval(w); ok(); } }, 100); });
+    assert.throws(() => tasks.rerun(r.id), /stopped or failed/); // a finished task is not run again
+    put('t9', 'siti', 'also cut'); fs.writeFileSync(path.join(dir, 'tasks', 't9.md'), fs.readFileSync(path.join(dir, 'tasks', 't9.md'), 'utf8').replace('status: new', 'status: working'));
+    tasks.recover(); tasks.dismiss('t9');
+    assert.deepStrictEqual(tasks.interrupted(), []);
   });
 
   fs.rmSync(tmp, { recursive: true, force: true });
