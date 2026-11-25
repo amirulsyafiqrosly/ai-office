@@ -1,6 +1,7 @@
 // AI Office command guard. Claude Code runs this before every shell command (PreToolUse, Bash).
 // It allows only the commands the boss ticked for that staff on the Staff page, run in the
-// office folder or a linked folder. Some commands are always refused: the boss runs those.
+// office folder or a linked folder. "Office documents" is on for every staff unless the boss turns it off:
+// it lets them run node on a script saved in the office (to make PowerPoint, Excel, Word, PDF, images). Some commands are always refused: the boss runs those.
 // It also checks the "ask first" add-on actions (send a quotation or invoice, record a payment):
 // allowed only when the boss set them to "Always allow" in Settings, or approved this exact one.
 // It decides; it does not run anything and sends nothing anywhere.
@@ -18,7 +19,10 @@ const PRESETS = {
   laravel: { label: 'Laravel', about: 'php artisan (make, migrate, test, route:list, cache, ...)', allow: ['php artisan', 'php -v', 'php -l'] },
   node: { label: 'npm', about: 'npm install, npm ci, npm run, npm test', allow: ['npm install', 'npm i ', 'npm ci', 'npm run', 'npm test', 'npm ls', 'npm outdated'] },
   composer: { label: 'Composer', about: 'composer install, require, update, dump-autoload', allow: ['composer install', 'composer require', 'composer update', 'composer dump-autoload', 'composer show', 'composer outdated', 'composer validate'] },
+  docs: { label: 'Office documents', about: 'PowerPoint, Excel, Word, PDF and images (node runs a script saved in the office)', allow: ['node'] },
 };
+// A staff's presets: "docs" is on unless the boss turned it off (docs: false in office.json).
+const cmdsOf = (s) => [...(s && s.docs === false ? [] : ['docs']), ...((s && s.commands) || []).filter((k) => k !== 'docs')];
 // Never, whatever is ticked: these lose work, publish, or open a door. The boss runs them.
 const ALWAYS_DENY = ['git push', 'git reset --hard', 'git clean', 'git rebase', 'git filter-branch', 'git branch -D', 'git checkout --', 'git restore .',
   'php artisan migrate:fresh', 'php artisan migrate:reset', 'php artisan migrate:refresh', 'php artisan db:wipe', 'php artisan tinker', 'php artisan down',
@@ -74,7 +78,7 @@ function decide(input, office, opts = {}) {
     return opts.chat ? { decision: 'deny', reason: `"${d.trim()}" is never run from the dashboard. The boss runs it in a terminal (or asks for it in Needs your OK).` } : { decision: null };
   }
   if (!staff) return no(`${name} does not run commands. Hand it to a staff who has commands turned on (Staff page).`);
-  const allowed = [...(staff.commands || []).flatMap((k) => (PRESETS[k] ? PRESETS[k].allow : [])), ...(staff.customCommands || [])];
+  const allowed = [...cmdsOf(staff).flatMap((k) => (PRESETS[k] ? PRESETS[k].allow : [])), ...(staff.customCommands || [])];
   if (!allowed.length) return no(`${name} has no commands turned on. The boss can tick them on the Staff page.`);
 
   const norm = (d) => (win ? P.resolve(d).toLowerCase() : P.resolve(d)); // Windows paths ignore case
@@ -98,6 +102,13 @@ function decide(input, office, opts = {}) {
       for (const d of ALWAYS_DENY) if (starts(p, d.trim())) return opts.chat ? { decision: 'deny', reason: `"${d.trim()}" is never run from the dashboard. The boss runs it in a terminal.` } : { decision: null };
     }
     if (!allowed.some((a) => starts(p, a))) return no(`"${p.split(/\s+/).slice(0, 3).join(' ')}" is not on ${name}'s allowed commands. The boss can add it on the Staff page.`);
+    // Office documents: node only on a script file saved in the office or a linked folder (no -e, no outside scripts)
+    if (starts(p, 'node') && !(staff.customCommands || []).some((c) => starts(p, c))) {
+      const [file] = firstWord(p.slice(4).trim());
+      if (!file || file.startsWith('-') || !/\.(c?js|mjs)["']?$/i.test(file) || !inside(realPath(file, input.cwd || office.dir, win))) {
+        return no(`${name} may run node only on a script saved in the office or a linked folder, like: node "projects/<project>/make-deck.cjs".`);
+      }
+    }
   }
   return { decision: 'allow', reason: `on ${name}'s allowed commands` };
 }
@@ -148,7 +159,7 @@ function useGrant(dir, id, when = new Date().toISOString()) {
   } catch { /* approval file gone: the grant is what counts */ }
 }
 
-module.exports = { PRESETS, ALWAYS_DENY, ASK_FIRST, decide, decideAction, sameInput };
+module.exports = { PRESETS, ALWAYS_DENY, ASK_FIRST, cmdsOf, decide, decideAction, sameInput };
 
 if (require.main === module) {
   let raw = '';

@@ -1,4 +1,5 @@
 // Office server + API tests against a temporary office. Run: npm test
+process.env.AI_OFFICE_NO_DOCTOOLS = '1'; // never download the document tools in tests
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
@@ -184,11 +185,34 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       assert.strictEqual(r.status, 200, JSON.stringify(r.body));
       assert.deepStrictEqual(r.body.commands, ['git']);
       assert.match(read('.claude/agents/aina.md'), /^tools: Read, Write, Edit, Glob, Grep, Bash$/m);
-      assert.match(read('staff/aina/CLAUDE.md'), /^- Commands you may run, in the office or a linked folder: Git \(.*\); `php vendor\/bin\/pint`\./m);
+      assert.match(read('staff/aina/CLAUDE.md'), /^- Commands you may run, in the office or a linked folder: Office documents \(.*\); Git \(.*\); `php vendor\/bin\/pint`\./m);
       assert.strictEqual((await req('PUT', '/api/staff/aina', { customCommands: ['ls; rm -rf /'] })).status, 400);
-      await req('PUT', '/api/staff/aina', { commands: [], customCommands: [] });
+      await req('PUT', '/api/staff/aina', { commands: [], customCommands: [] }); // Office documents stays on by default
+      assert.match(read('.claude/agents/aina.md'), /Bash/);
+      assert.match(read('staff/aina/CLAUDE.md'), /Commands you may run.*Office documents/);
+      await req('PUT', '/api/staff/aina', { docs: false });
+      assert.strictEqual(JSON.parse(read('office.json')).staff.find((x) => x.id === 'aina').docs, false);
       assert.doesNotMatch(read('.claude/agents/aina.md'), /Bash/);
       assert.doesNotMatch(read('staff/aina/CLAUDE.md'), /Commands you may run/);
+      await req('PUT', '/api/staff/aina', { docs: true });
+      assert.strictEqual(JSON.parse(read('office.json')).staff.find((x) => x.id === 'aina').docs, undefined);
+      const T = require('../lib/templates');
+      // model and effort: defaults, changed per staff and for the manager, used by the terminal subagent too
+      let run = (await req('GET', '/api/run')).body;
+      assert.deepStrictEqual(run.people.pa, { model: 'opus', effort: 'medium' });
+      assert.deepStrictEqual(run.people.aina, { model: 'sonnet', effort: 'medium' });
+      assert.match(read('.claude/agents/aina.md'), /^model: sonnet$/m);
+      assert.strictEqual((await req('PUT', '/api/staff/aina', { model: 'haiku', effort: 'low' })).status, 200);
+      assert.match(read('.claude/agents/aina.md'), /^model: haiku$/m);
+      assert.strictEqual((await req('PUT', '/api/staff/aina', { model: 'gpt-9' })).status, 400);
+      assert.strictEqual((await req('PUT', '/api/manager', { model: 'fable', effort: 'high' })).status, 200);
+      run = (await req('GET', '/api/run')).body;
+      assert.deepStrictEqual(run.people.pa, { model: 'fable', effort: 'high' });
+      assert.deepStrictEqual(run.people.aina, { model: 'haiku', effort: 'low' });
+      assert.deepStrictEqual(T.runFlags(JSON.parse(read('office.json')), 'aina'), ['--model', 'haiku', '--effort', 'low']);
+      await req('PUT', '/api/staff/aina', { model: 'default', effort: 'default' });
+      assert.deepStrictEqual(T.runFlags(JSON.parse(read('office.json')), 'aina'), []);
+      assert.match(read('.claude/agents/aina.md'), /^model: inherit$/m);
       const settings = JSON.parse(read('staff/aina/.claude/settings.json'));
       assert.ok(settings.hooks.PreToolUse.some((e) => e.matcher === 'Bash' && /guard\.js"$/.test(e.hooks[0].command)), 'guard hook registered');
       assert.ok(fs.existsSync(path.join(dir, '.office/guard.js')));

@@ -8,6 +8,7 @@ const office = {
   staff: [
     { id: 'shah', name: 'Shah', commands: ['git', 'laravel'], customCommands: ['php vendor/bin/pint'] },
     { id: 'siti', name: 'Siti' },
+    { id: 'aina', name: 'Aina', docs: false },
   ],
 };
 const run = (command, o = {}) => decide({ tool_name: 'Bash', tool_input: { command }, agent_type: o.agent ?? 'shah', cwd: o.cwd || office.dir }, office, { chat: o.chat ?? true, win: false });
@@ -15,6 +16,21 @@ const allow = (c, o) => assert.strictEqual(run(c, o).decision, 'allow', `should 
 const deny = (c, o) => assert.strictEqual(run(c, o).decision, 'deny', `should deny: ${c}`);
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log(`ok ${n} ${name}`); };
+
+test('office documents: on by default, node only on a script saved in the office', () => {
+  allow('node make-deck.cjs', { agent: 'siti', cwd: '/home/ali/office/staff/siti' });
+  allow('node "/home/ali/office/projects/raya/make-deck.cjs"', { agent: 'siti' });
+  allow('cd /home/ali/projects/8fix && node tools/chart.js', { agent: 'siti' });
+  allow('node /home/ali/office/projects/raya/make.mjs', { agent: 'siti' });
+  deny('node -e "require(\'fs\').rmSync(\'/\')"', { agent: 'siti' });
+  deny('node --eval x', { agent: 'siti' });
+  deny('node /home/ali/other/evil.cjs', { agent: 'siti' });
+  deny('node ../../../tmp/x.cjs', { agent: 'siti', cwd: '/home/ali/office/staff/siti' });
+  deny('node /home/ali/office/notes.txt', { agent: 'siti' });
+  deny('node', { agent: 'siti' });
+  deny('node make.cjs', { agent: 'aina', cwd: '/home/ali/office/staff/aina' }); // turned off
+  assert.ok(PRESETS.docs && PRESETS.docs.allow.includes('node'));
+});
 
 test('allowed commands in a linked folder', () => {
   allow('git status');
@@ -60,7 +76,9 @@ test('only ticked presets; other staff and the PA run nothing', () => {
   deny('npm install');
   deny('composer install');
   deny('git status', { agent: 'siti' });
-  assert.match(run('git status', { agent: 'siti' }).reason, /no commands turned on/);
+  assert.match(run('git status', { agent: 'siti' }).reason, /not on Siti's allowed commands/);
+  deny('git status', { agent: 'aina' });
+  assert.match(run('git status', { agent: 'aina' }).reason, /no commands turned on/); // documents turned off: nothing
   deny('git status', { agent: '' });
   assert.match(run('git status', { agent: '' }).reason, /does not run commands/);
 });
@@ -86,7 +104,7 @@ test('Windows paths (Git Bash /c/..., backslashes, quotes, WSL share)', () => {
 });
 
 test('presets are what the Staff page offers', () => {
-  assert.deepStrictEqual(Object.keys(PRESETS), ['git', 'laravel', 'node', 'composer']);
+  assert.deepStrictEqual(Object.keys(PRESETS), ['git', 'laravel', 'node', 'composer', 'docs']);
 });
 
 test('ask-first actions: only with an unused OK from the boss for that staff and that exact call', () => {

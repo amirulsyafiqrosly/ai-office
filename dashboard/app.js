@@ -332,6 +332,23 @@ function renderStaff() {
   if (!S.dirty.has('staff')) renderStaffForm();
 }
 
+// Model and effort pickers (Staff page). Defaults come from the office until the boss changes them.
+function runFields(who) {
+  const r = S.run || { models: [], efforts: [], people: {} }, cur = r.people[who] || {};
+  const opt = (list, v) => list.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
+  return `<div class="grid2"><div><label class="lbl">Model</label><select class="in" name="model">${opt(r.models, cur.model)}</select></div>
+    <div><label class="lbl">Effort</label><select class="in" name="effort">${opt(r.efforts, cur.effort)}</select></div></div>
+    <div class="faint" style="font-size:11.5px;margin-top:4px;line-height:1.5">A stronger model or more effort thinks harder and uses more of your Claude plan.</div>`;
+}
+// The office document tools install themselves on the first start; this says how that went.
+function docToolsLine() {
+  const d = S.doctools || {};
+  const txt = d.ready ? `${icon('check')}Ready` : d.state === 'installing' ? 'Getting ready (first start only, about a minute)...'
+    : d.state === 'failed' ? `Could not install: ${esc(d.error || 'unknown error')} <button class="btn sm" data-dtretry>Try again</button>` : `Not installed yet <button class="btn sm" data-dtretry>Install</button>`;
+  return `<div class="dtline">Office documents tools: ${txt}</div>`;
+}
+document.addEventListener('click', (e) => { if (e.target.closest('[data-dtretry]')) api('doctools/install', 'POST').then((d) => { S.doctools = d; const l = $('.dtline'); if (l) l.outerHTML = docToolsLine(); }, (er) => toast(er.message, true)); });
+
 function renderStaffForm() {
   const f = $('#staffForm');
   const id = S.sel.staff;
@@ -339,7 +356,11 @@ function renderStaffForm() {
     f.innerHTML = `<div class="ph">${paAv()}<h3>${esc(pa().name)}</h3>${MGR}<div class="acts"><button class="ibtn" data-x>${icon('x')}</button></div></div>
       <div class="pb pre">${esc(pa().name)} is your manager. Every task goes through ${esc(pa().name)}, who hands it to the right staff, checks the result and reports back to you.
 
-${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in the office folder. The team table in it updates by itself when you add, edit or archive staff.</div>`;
+${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in the office folder. The team table in it updates by itself when you add, edit or archive staff.</div>
+      <div class="pb form" id="pf">${runFields('pa')}</div>
+      <div class="formfoot"><button class="btn pri" id="pSave">${icon('save')}Save</button></div>`;
+    $('#pSave').onclick = () => act(() => api('manager', 'PUT', { model: $('[name=model]', f).value, effort: $('[name=effort]', f).value }), 'Saved')
+      .then(async () => { S.run = await api('run'); renderStaffForm(); });
   } else {
     const s = S.staff.find((x) => x.id === id);
     if (!s) { f.innerHTML = `<div class="empty"><b>Pick a staff</b>Click a row to edit their job, rules and look.</div>`; S.sel.staff = null; return; }
@@ -356,8 +377,10 @@ ${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in t
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="checkbox" name="scarf" ${look.scarf ? 'checked' : ''}> Headscarf</label>
         <div class="swatches" data-pick="skin" style="margin-bottom:6px">${SKINS.map((c) => `<i style="background:${c}" data-v="${c}" class="${c === look.skin ? 'on' : ''}"></i>`).join('')}</div>
         <div class="swatches" data-pick="hair">${HAIRS.map((c) => `<i style="background:${c}" data-v="${c}" class="${c === look.hair ? 'on' : ''}"></i>`).join('')}</div>
+        ${runFields(id)}
         <label class="lbl">Commands ${esc(s.name)} may run</label>
-        <div class="cmdgrid">${(S.presets || []).map((p) => `<label class="cmd"><input type="checkbox" name="cmd" value="${esc(p.id)}" ${(s.commands || []).includes(p.id) ? 'checked' : ''}><span><b>${esc(p.label)}</b><br><span class="faint">${esc(p.about)}</span></span></label>`).join('')}</div>
+        <div class="cmdgrid">${(S.presets || []).map((p) => `<label class="cmd"><input type="checkbox" name="cmd" value="${esc(p.id)}" ${(p.id === 'docs' ? s.docs !== false : (s.commands || []).includes(p.id)) ? 'checked' : ''}><span><b>${esc(p.label)}</b><br><span class="faint">${esc(p.about)}</span></span></label>`).join('')}</div>
+        ${docToolsLine()}
         <textarea class="in mono" name="customCommands" rows="2" placeholder="Other commands, one per line, e.g. php vendor/bin/pint" style="margin-top:8px">${esc((s.customCommands || []).join('\n'))}</textarea>
         <div class="faint" style="font-size:11.5px;margin-top:4px;line-height:1.5">Only in the office folder and linked folders. Never from the dashboard: git push, reset --hard, migrate:fresh, db:wipe, deleting with rm. You run those yourself.</div>
         <label class="lbl">Tools</label><div class="pre" style="padding:0;color:var(--muted)">${esc(s.tools.replace(/<!--[\s\S]*?-->/g, '').replace(/^- Commands you may run.*$/m, '').trim())}</div>
@@ -373,9 +396,10 @@ ${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in t
     $('#sSave').onclick = () => {
       const val = (n) => $(`[name=${n}]`, f).value;
       act(() => api(`staff/${id}`, 'PUT', { name: val('name'), role: val('role'), job: val('job'), rules: val('rules').split('\n'), notes: val('notes'),
-        commands: $$('[name=cmd]:checked', f).map((x) => x.value), customCommands: val('customCommands').split('\n').map((x) => x.trim()).filter(Boolean),
+        commands: $$('[name=cmd]:checked', f).map((x) => x.value).filter((x) => x !== 'docs'), docs: $$('[name=cmd]:checked', f).some((x) => x.value === 'docs'),
+        customCommands: val('customCommands').split('\n').map((x) => x.trim()).filter(Boolean), model: val('model'), effort: val('effort'),
         colour: pick.colour, look: { scarf: $('[name=scarf]', f).checked, skin: pick.skin, hair: pick.hair } }), 'Saved')
-        .then(() => { S.dirty.delete('staff'); return refresh(['office', 'staff']); });
+        .then(async () => { S.dirty.delete('staff'); S.run = await api('run'); return refresh(['office', 'staff']); });
     };
     $('#sArch').onclick = () => modal(`<div class="mh">${icon('archive')}<b>Archive ${esc(s.name)}?</b></div>
       <p>${esc(s.name)} stops getting work and leaves the office. The folder, notes and history are kept, and you can reactivate any time.</p>
@@ -879,6 +903,7 @@ function live() {
       render();
     });
   });
+  es.addEventListener('doctools', (e) => { S.doctools = JSON.parse(e.data); const l = $('.dtline'); if (l) l.outerHTML = docToolsLine(); }); // in place: keeps unsaved edits
   es.addEventListener('usage', (e) => { S.usage = JSON.parse(e.data); renderUsage(); });
   es.addEventListener('tasks', (e) => { const act = JSON.parse(e.data); api('tasks').then((r) => { S.tasks = r.active.map((a) => ({ ...a, ...(r.list.find((t) => t.id === a.id) || {}) })); renderChats(); }).catch(() => {}); S.tasks = act; renderChats(); });
   es.addEventListener('chatlive', (e) => { const { id, step, text } = JSON.parse(e.data); const c = chatOf(id); c.live = { step, text }; if (c.running && !c.since) c.since = Date.now(); renderLive(id); });
@@ -900,7 +925,7 @@ function live() {
 }
 
 (async () => {
-  try { await load(); S.status = await api('status'); S.presets = await api('presets'); S.usage = await api('usage').catch(() => null); S.linked = await api('linked').catch(() => []); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
+  try { await load(); S.status = await api('status'); S.presets = await api('presets'); S.usage = await api('usage').catch(() => null); S.linked = await api('linked').catch(() => []); S.run = await api('run').catch(() => null); S.doctools = await api('doctools').catch(() => null); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
   const run = await api('chats').catch(() => ({ running: [] }));
   const tk = await api('tasks').catch(() => ({ active: [], list: [] }));
   S.tasks = tk.active.map((a) => ({ ...a, ...(tk.list.find((t) => t.id === a.id) || {}) }));

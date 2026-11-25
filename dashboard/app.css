@@ -378,3 +378,6 @@ body.term #work.board{top:136px}
 .bm a.fpath{display:inline;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:11.5px;background:var(--acc-soft);color:var(--acc);border-radius:3px;padding:1px 4px;text-decoration:none;cursor:pointer;overflow-wrap:anywhere}
 .bm a.fpath:hover{text-decoration:underline}
 .bm a.fpath svg.ic{width:11px;height:11px;vertical-align:-1px;margin-right:3px}
+.dtline{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:6px}
+.dtline svg.ic{width:12px;height:12px;color:var(--green)}
+select.in{height:30px;padding:0 6px;background:#fff}
