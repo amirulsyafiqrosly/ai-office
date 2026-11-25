@@ -90,6 +90,22 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.strictEqual(c.args[c.args.indexOf('--resume') + 1], 'sess-1');
   });
 
+  await test('a long conversation starts fresh, with a recap of the recent chat', async () => {
+    const m = chats.meta(); m.pa.ctx = 250000; fs.writeFileSync(chats.metaFile(), JSON.stringify(m));
+    chats.send('pa', 'What about Kedai Ali?');
+    await idle('pa');
+    const c = calls().pop();
+    assert.ok(!c.args.includes('--resume'), 'no resume');
+    const p = c.args[c.args.indexOf('-p') + 1];
+    assert.match(p, /^\[Recap of the recent chat/);
+    assert.match(p, /Boss: Thanks/);
+    assert.match(p, /\[New message\]\nWhat about Kedai Ali\?$/);
+    assert.ok(chats.history('pa').messages.some((x) => x.kind === 'new' && /Fresh conversation/.test(x.text)));
+    chats.send('pa', 'ok'); await idle('pa');
+    const c2 = calls().pop();
+    assert.ok(c2.args.includes('--resume'), 'then it resumes the new one');
+  });
+
   await test('a message sent while replying waits, then runs next', async () => {
     chats.send('siti', 'SLOW please');
     assert.deepStrictEqual(chats.send('siti', 'and another thing'), { ok: true, queued: true });

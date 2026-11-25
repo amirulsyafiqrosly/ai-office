@@ -213,6 +213,12 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       await req('PUT', '/api/staff/aina', { model: 'default', effort: 'default' });
       assert.deepStrictEqual(T.runFlags(JSON.parse(read('office.json')), 'aina'), []);
       assert.match(read('.claude/agents/aina.md'), /^model: inherit$/m);
+      // outside MCP servers: none without an add-on job; with one, the user's own servers but no claude.ai connectors
+      const oc = JSON.parse(read('office.json'));
+      assert.deepStrictEqual(T.mcpRun(oc, 'aina', true), { args: ['--strict-mcp-config'], env: {} });
+      const withInv = { ...oc, addons: { 'invois-online': { enabled: true } } };
+      assert.deepStrictEqual(T.mcpRun(withInv, 'pa', true), { args: [], env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' } });
+      assert.deepStrictEqual(T.mcpRun(withInv, 'pa', false), { args: [], env: {} }, 'only the connector: keep it');
       const settings = JSON.parse(read('staff/aina/.claude/settings.json'));
       assert.ok(settings.hooks.PreToolUse.some((e) => e.matcher === 'Bash' && /guard\.js"$/.test(e.hooks[0].command)), 'guard hook registered');
       assert.ok(fs.existsSync(path.join(dir, '.office/guard.js')));
