@@ -154,6 +154,7 @@ function renderOffice() {
     wireOffice();
   }
   const b = S.status.banner;
+  document.body.classList.toggle('term', !!b);
   $('#termBar').innerHTML = b ? `<div class="termbar">${icon('circle-alert')}${esc(nameOf(b.who === 'pa' ? '' : b.who) || pa().name)} needs you in the terminal: ${esc(b.msg)}</div>` : '';
   renderOkButton();
   draw3d();
@@ -698,7 +699,7 @@ function renderChats() {
     $('.wh', w).innerHTML = `${av(p)}<b>${esc(p.name)}</b>${id === 'pa' ? MGR : ''}<span class="badge ${st}" style="height:18px;font-size:11px"><i class="d ${st}"></i>${SLAB[st]}</span><div class="acts"><button class="ibtn" data-newchat="${esc(id)}" title="New conversation (${esc(p.name)} starts fresh; this chat stays above)">${icon('refresh-cw')}</button><button class="ibtn" data-min="${esc(id)}" title="Minimise">${icon('minus')}</button><button class="ibtn" data-close="${esc(id)}" title="Close">${icon('x')}</button></div>`;
     const waits = id === 'pa' ? [] : pendingOks().filter((a) => a.from === id);
     const work = id === 'pa' ? (S.tasks || []) : (S.tasks || []).filter((t) => t.staff === id || t.from === id); // their own work, and what they asked a colleague
-    $('.wstrips', w).innerHTML = work.map((t) => `<div class="wstrip work">${icon('clock')}<div class="sq"><b>Working now</b>${esc((personOf(t.staff) || { name: t.staff }).name)}: ${esc(t.title || t.id)}${t.step ? `<span class="now">${esc(t.step)}</span>` : ''}</div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`).join('') + waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
+    $('.wstrips', w).innerHTML = workLine(work) + waits.map((a) => `<div class="wstrip">${icon('hand')}<div class="sq"><b>Waiting for your OK</b>${esc(a.action)}</div><button class="btn sm ok" data-ok="${esc(a.id)}" data-d="approved">Approve</button><button class="btn sm" data-ok="${esc(a.id)}" data-d="rejected">Reject</button></div>`).join('');
     const body = $('.wb', w);
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
     const intro = id === 'pa' ? `${esc(p.name)} is your manager. Tell them what you need; they hand it to the right staff.` : `Direct chat with ${esc(p.name)} (${esc(p.role)}).`;
@@ -708,7 +709,54 @@ function renderChats() {
     $('textarea', w).placeholder = c.running ? `Message ${p.name}... (goes next, after this reply)` : `Message ${p.name}...`;
   });
   if (S.view === 'office') fitOffice();
+  renderWork();
 }
+
+// ------------------------------------------------------------------ work board: what staff are doing now
+// Office view: a panel in the top-left corner that folds to a slim bar. Other pages: a dropdown under
+// the "working" count in the top bar. Chat windows only get one thin line, so the chat stays visible.
+const WKEY = 'aio.workMin';
+let workMin = false, workPop = false;
+try { workMin = localStorage.getItem(WKEY) === '1'; } catch { /* private window: start open */ }
+const nameOfStaff = (id) => (personOf(id) || { name: id }).name;
+const since = (iso) => { const m = Math.floor((Date.now() - Date.parse(iso)) / 60000); return Number.isNaN(m) ? '' : m < 1 ? 'just now' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+function workLine(work) {
+  if (!work.length) return '';
+  if (work.length === 1) {
+    const t = work[0];
+    return `<div class="wstrip work one" data-task="${esc(t.id)}">${icon('clock')}<div class="sq"><b>${esc(nameOfStaff(t.staff))}:</b> ${esc(t.title || t.id)}<span class="now">${esc(t.step || 'Starting')}</span></div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`;
+  }
+  return `<div class="wstrip work one link" data-work="open">${icon('clock')}<div class="sq"><b>${work.length} staff working:</b> ${esc(work.map((t) => nameOfStaff(t.staff)).join(', '))}</div><span class="more">Show</span></div>`;
+}
+function renderWork() {
+  let el = $('#work');
+  if (!el) { el = document.createElement('div'); el.id = 'work'; document.body.append(el); }
+  const work = S.tasks || [], office = S.view === 'office';
+  if (!work.length) workPop = false;
+  el.hidden = !(work.length && (office || workPop));
+  if (el.hidden) return;
+  el.className = office ? `board${workMin ? ' min' : ''}` : 'pop';
+  if (office) el.style.left = '';
+  else { const r = $('#stat').getBoundingClientRect(); el.style.left = `${Math.max(8, Math.min(r.left - 10, innerWidth - 338))}px`; }
+  const heads = [...new Set(work.map((t) => t.staff))].map(personOf).filter(Boolean).slice(0, 5).map((p) => av(p)).join('');
+  const open = !office || !workMin;
+  el.innerHTML = `<div class="wkh" data-work="${office ? 'fold' : 'close'}" title="${office ? (open ? 'Fold' : 'Show the list') : 'Close'}"><i class="d working"></i><b>${work.length} working</b><span class="heads">${heads}</span>${icon(office ? 'chevron-down' : 'x')}</div>`
+    + (open ? `<div class="wkl">${work.map((t) => {
+      const p = personOf(t.staff) || { name: t.staff }, asked = t.from && t.from !== 'pa' && t.from !== t.staff ? personOf(t.from) : null;
+      return `<div class="wk" data-task="${esc(t.id)}">${p.colour ? av(p) : ''}<div class="sq"><div class="l1"><b>${esc(p.name)}</b><span class="faint">${since(t.created)}</span></div><div class="ti">${esc(t.title || t.id)}${asked ? ` <span class="faint">(asked by ${esc(asked.name)})</span>` : ''}</div><span class="now">${esc(t.step || 'Starting')}</span></div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`;
+    }).join('')}</div>` : '');
+}
+setInterval(() => { if ($('#work') && !$('#work').hidden) renderWork(); }, 30000);
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-work],#stat');
+  if (!t) { if (workPop && !e.target.closest('#work')) { workPop = false; renderWork(); } return; }
+  if (!(S.tasks || []).length) { toast('Nobody is working on a task right now'); return; }
+  const want = t.id === 'stat' ? 'toggle' : t.dataset.work;
+  if (S.view === 'office') workMin = want === 'open' ? false : !workMin;
+  else workPop = want === 'open' ? true : want === 'close' ? false : !workPop;
+  try { localStorage.setItem(WKEY, workMin ? '1' : '0'); } catch { /* not saved, fine */ }
+  renderWork();
+});
 
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-chat],[data-close],[data-min],[data-stop],[data-ask],[data-newchat],[data-copy],[data-stoptask]');
@@ -782,7 +830,7 @@ function live() {
   es.addEventListener('taskstep', (e) => {
     const x = JSON.parse(e.data);
     const t = (S.tasks || []).find((y) => y.id === x.id); if (t) t.step = x.step;
-    for (const el of $$('.wstrip.work')) if (el.querySelector(`[data-stoptask="${CSS.escape(x.id)}"]`)) { let n = el.querySelector('.now'); if (!n) { n = document.createElement('span'); n.className = 'now'; el.querySelector('.sq').append(n); } n.textContent = x.step; }
+    for (const n of $$(`[data-task="${CSS.escape(x.id)}"] .now`)) n.textContent = x.step;
     if (S.view === 'office') draw3d();
   });
   es.addEventListener('chatstate', (e) => { const { id, running } = JSON.parse(e.data); const c = chatOf(id); c.running = running; c.since = running ? (c.since || Date.now()) : null; if (!running) c.live = null; renderChats(); });

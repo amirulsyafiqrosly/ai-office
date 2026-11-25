@@ -300,4 +300,42 @@ body.ok-open #wins{right:456px}
 .typing .secs{color:var(--faint);font-variant-numeric:tabular-nums}
 .typing .btn{margin-left:0}
 .wstrip .sq .now{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
-.wstrip .sq .now:before{content:"\25B8 "}
+.wstrip .sq .now:before{content:"\25B8\00a0"}
+/* one thin line per chat window for staff work (the full list is the work board) */
+.wstrip.one{padding:6px 10px}
+.wstrip.one > svg.ic{width:14px;height:14px}
+.wstrip.one .sq{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wstrip.one .sq b{display:inline;font-size:12px;text-transform:none;letter-spacing:0;color:var(--text)}
+.wstrip.one .sq .now{display:inline;margin-left:6px}
+.wstrip.link{cursor:pointer}
+.wstrip.link:hover{filter:brightness(.97)}
+.wstrip .more{font-size:12px;font-weight:600;color:var(--green)}
+/* work board: top-left of the office view, or a dropdown under the top bar count on other pages */
+.stat{padding:4px 8px;margin:0 -8px;border-radius:var(--rs);font:inherit;font-weight:500}
+.stat:hover{background:rgba(255,255,255,.14)}
+#work{position:fixed;z-index:40;width:310px;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 6px 20px rgba(20,20,40,.12);overflow:hidden}
+#work[hidden]{display:none}
+#work.board{top:92px;left:12px}
+body.term #work.board{top:136px}
+#work.board.min{width:auto}
+#work.pop{top:50px;z-index:60}
+.wkh{display:flex;align-items:center;gap:8px;height:38px;padding:0 8px 0 12px;cursor:pointer;user-select:none}
+.wkh b{font-weight:600;white-space:nowrap}
+.wkh .heads{display:flex;margin-left:2px}
+.wkh .heads .av{border:2px solid #fff;margin-left:-6px}
+.wkh .heads .av:first-child{margin-left:0}
+.wkh > svg.ic{margin-left:auto;width:16px;height:16px;color:var(--muted);transition:transform .2s}
+#work.board:not(.min) .wkh > svg.ic{transform:rotate(180deg)}
+#work.board:not(.min) .wkh,#work.pop .wkh{border-bottom:1px solid var(--line2)}
+.wkl{max-height:min(52vh,420px);overflow:auto}
+.wk{display:flex;align-items:flex-start;gap:9px;padding:9px 10px 9px 12px;border-bottom:1px solid var(--line2)}
+.wk:last-child{border-bottom:0}
+.wk > .av{width:26px;height:26px;margin-top:1px}
+.wk .sq{flex:1;min-width:0;font-size:12px;line-height:1.4}
+.wk .l1{display:flex;gap:8px;align-items:baseline}
+.wk .l1 b{font-weight:600;font-size:12.5px}
+.wk .l1 .faint{margin-left:auto;font-size:11px;white-space:nowrap}
+.wk .ti{overflow-wrap:anywhere}
+.wk .now{display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk .now:before{content:"\25B8\00a0"}
+.wk .btn{margin-top:2px}
