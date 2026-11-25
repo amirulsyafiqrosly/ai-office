@@ -135,6 +135,7 @@ function render() {
   ({ office: renderOffice, staff: renderStaff, projects: renderProjects, inbox: renderInbox, settings: renderSettings })[S.view]();
   renderOk();
   renderChats();
+  renderUsage();
 }
 
 // ------------------------------------------------------------------ office: live 3D office
@@ -651,7 +652,20 @@ function msgHtml(id, m) {
     if (m.kind === 'new') return `<div class="wnew">${esc(m.text)}${time ? `, ${time}` : ''}</div>`;
     return `<div class="wact">${icon(m.done ? 'check' : 'chevron-right')}${esc(m.text)}</div>`;
   }
-  return `<div class="bm">${markdown(m.text)}<span class="t">${time}</span></div>`;
+  return `<div class="bm">${linkPaths(markdown(m.text))}<span class="t">${time}</span></div>`;
+}
+
+// File paths in a reply (in backticks) become links: a click opens the file on this computer, like a
+// double-click. The server only opens files inside the office or a linked folder.
+const unesc = (h) => h.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+function isPath(t) {
+  if (/^[A-Za-z]:[\\/]/.test(t) || /^\\\\[^\\]/.test(t)) return true; // C:\... or \\server\...
+  const roots = [S.office.folder, ...(S.linked || []).map((l) => l.path)].filter(Boolean);
+  if (t.startsWith('/')) return roots.some((r) => t === r || t.startsWith(`${r}/`));
+  return /^(projects|inbox|staff|tasks|approvals)[\\/][^\s]/.test(t); // relative to the office folder
+}
+function linkPaths(html) {
+  return html.replace(/<code>([^<]{3,400})<\/code>/g, (all, inner) => (isPath(unesc(inner).trim()) ? `<a class="fpath" data-open="${inner}" title="Open this file">${icon('file-text')}${inner}</a>` : all));
 }
 
 // What is happening right now in a chat: the step in plain words, seconds so far, and the
@@ -755,7 +769,34 @@ function renderWork() {
       return `<div class="wk" data-task="${esc(t.id)}">${p.colour ? av(p) : ''}<div class="sq"><div class="l1"><b>${esc(p.name)}</b><span class="faint">${since(t.created)}</span></div><div class="ti">${esc(t.title || t.id)}${asked ? ` <span class="faint">(asked by ${esc(asked.name)})</span>` : ''}</div><span class="now">${esc(t.step || 'Starting')}</span></div><button class="btn sm" data-stoptask="${esc(t.id)}">Stop</button></div>`;
     }).join('')}</div>` : '');
 }
-setInterval(() => { if ($('#work') && !$('#work').hidden) renderWork(); }, 30000);
+setInterval(() => { if ($('#work') && !$('#work').hidden) renderWork(); renderUsage(); }, 30000);
+
+// ------------------------------------------------------------------ usage: plan limits and tokens (bottom left)
+// Every dashboard run reports the account's 5-hour and weekly limits and its own tokens; the server keeps the latest.
+let usageOpen = false;
+const fmtN = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
+const fmtUsd = (n) => `$${n < 10 ? n.toFixed(2) : Math.round(n)}`;
+const until = (iso) => { const m = Math.round((Date.parse(iso) - Date.now()) / 60000); if (!(m > 0)) return 'now'; const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m % 60}m` : `${m}m`; };
+const level = (pct) => (pct >= 95 ? 'red' : pct >= 80 ? 'amber' : 'ok');
+function renderUsage() {
+  let el = $('#usage');
+  if (!el) { el = document.createElement('div'); el.id = 'usage'; document.body.append(el); el.addEventListener('click', (e) => { if (e.target.closest('.ubar')) { usageOpen = !usageOpen; renderUsage(); } }); }
+  const u = S.usage || {}, L = u.limits || {}, five = L.five_hour, week = L.seven_day, today = (u.today || { tokens: 0, cost: 0, people: {} });
+  const meter = (label, w) => (w ? `<span class="um ${level(w.used)}"><b>${label}</b><i><s style="width:${Math.min(100, w.used)}%"></s></i>${w.used}%</span>` : '');
+  const worst = Math.max(five ? five.used : 0, week ? week.used : 0);
+  const bar = `<div class="ubar ${level(worst)}${usageOpen ? ' open' : ''}" title="Claude plan use. Click for details.">${five || week ? meter('5h', five) + meter('Week', week) : '<span class="faint">Plan use shows after the first chat or task</span>'}${five && five.resets ? `<span class="faint">resets ${until(five.resets)}</span>` : ''}<span class="sep2"></span><span>Today <b>${fmtN(today.tokens)}</b> tokens</span>${icon('chevron-down')}</div>`;
+  let panel = '';
+  if (usageOpen) {
+    const lim = (label, w) => (w ? `<div class="ul"><div class="ulh"><b>${label}</b><span>${w.used}% used</span><span class="faint">${w.resets ? `resets in ${until(w.resets)}` : ''}</span></div><i class="${level(w.used)}"><s style="width:${Math.min(100, w.used)}%"></s></i></div>` : '');
+    const rows = (t) => Object.entries(t.people || {}).sort((a, b) => b[1].tokens - a[1].tokens).map(([id, p]) => `<tr><td>${esc(nameOf(id === 'pa' ? '' : id) || pa().name)}</td><td>${p.runs}</td><td>${fmtN(p.tokens)}</td><td>${fmtUsd(p.cost)}</td></tr>`).join('') || '<tr><td colspan="4" class="faint">Nothing yet</td></tr>';
+    const table = (title, t) => `<div class="ut"><div class="uth"><b>${title}</b><span>${fmtN(t.tokens || 0)} tokens, ${fmtUsd(t.cost || 0)}</span></div><table><tr><th>Who</th><th>Runs</th><th>Tokens</th><th>Cost</th></tr>${rows(t)}</table></div>`;
+    panel = `<div class="upanel">
+      ${five || week ? `${lim('5-hour limit', five)}${lim('Weekly limit', week)}<div class="faint unote">For your whole Claude account. Last updated ${L.at ? when(L.at) : 'never'} (updates when someone works).</div>` : '<div class="faint unote">Plan limits show after the first chat or staff task.</div>'}
+      ${table('Today', today)}${table('Last 7 days', u.week || {})}
+      <div class="faint unote">Counts chats and staff tasks run from this dashboard. Cost is the API price; on a Claude subscription you are not billed this.</div></div>`;
+  }
+  el.innerHTML = panel + bar;
+}
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-work],#stat');
   if (!t) { if (workPop && !e.target.closest('#work')) { workPop = false; renderWork(); } return; }
@@ -767,6 +808,10 @@ document.addEventListener('click', (e) => {
   renderWork();
 });
 
+document.addEventListener('click', (e) => {
+  const f = e.target.closest('a.fpath[data-open]');
+  if (f) { e.preventDefault(); api('open', 'POST', { path: f.dataset.open }).then((r) => toast(r.how === 'reveal' ? 'Shown in its folder (it is a program, so it was not run)' : 'Opening on your computer'), (er) => toast(er.message, true)); }
+});
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-chat],[data-close],[data-min],[data-stop],[data-ask],[data-newchat],[data-copy],[data-stoptask]');
   if (!t) return;
@@ -834,6 +879,7 @@ function live() {
       render();
     });
   });
+  es.addEventListener('usage', (e) => { S.usage = JSON.parse(e.data); renderUsage(); });
   es.addEventListener('tasks', (e) => { const act = JSON.parse(e.data); api('tasks').then((r) => { S.tasks = r.active.map((a) => ({ ...a, ...(r.list.find((t) => t.id === a.id) || {}) })); renderChats(); }).catch(() => {}); S.tasks = act; renderChats(); });
   es.addEventListener('chatlive', (e) => { const { id, step, text } = JSON.parse(e.data); const c = chatOf(id); c.live = { step, text }; if (c.running && !c.since) c.since = Date.now(); renderLive(id); });
   es.addEventListener('taskstep', (e) => {
@@ -854,7 +900,7 @@ function live() {
 }
 
 (async () => {
-  try { await load(); S.status = await api('status'); S.presets = await api('presets'); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
+  try { await load(); S.status = await api('status'); S.presets = await api('presets'); S.usage = await api('usage').catch(() => null); S.linked = await api('linked').catch(() => []); } catch (e) { document.body.innerHTML = `<div class="empty"><b>Cannot load the office</b>${esc(e.message)}</div>`; return; }
   const run = await api('chats').catch(() => ({ running: [] }));
   const tk = await api('tasks').catch(() => ({ active: [], list: [] }));
   S.tasks = tk.active.map((a) => ({ ...a, ...(tk.list.find((t) => t.id === a.id) || {}) }));

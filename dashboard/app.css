@@ -342,3 +342,39 @@ body.term #work.board{top:136px}
 /* slim scrollbars everywhere (no arrow buttons); light on the dark code blocks */
 *{scrollbar-width:thin;scrollbar-color:#C9CBD3 transparent}
 .bm pre{scrollbar-color:rgba(255,255,255,.28) transparent}
+/* usage: plan limits and tokens, bottom left, black */
+#usage{position:fixed;left:8px;bottom:6px;z-index:42;display:flex;flex-direction:column;align-items:flex-start;gap:6px;color:#E8E8EE;font-size:12px}
+.ubar{display:flex;align-items:center;gap:12px;height:32px;padding:0 10px 0 12px;background:#111216;border:1px solid #111216;border-radius:var(--r);cursor:pointer;user-select:none;white-space:nowrap}
+.ubar:hover{background:#1C1D23}
+.ubar b{color:#fff;font-weight:600}
+.ubar .faint,.upanel .faint{color:#9A9CA8}
+.ubar > svg.ic{width:14px;height:14px;color:#9A9CA8;transform:rotate(180deg);transition:transform .2s}
+.ubar.open > svg.ic{transform:none}
+.ubar.amber{border-color:#FFB020}.ubar.red{border-color:#F05252}
+.um{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.um i,.ul i{display:inline-block;width:46px;height:6px;border-radius:3px;background:#2C2E36;overflow:hidden}
+.um i s,.ul i s{display:block;height:100%;background:#4ADE80;border-radius:3px}
+.um.amber i s,.ul i.amber s{background:#FFB020}.um.red i s,.ul i.red s{background:#F05252}
+.um.amber{color:#FFCF66}.um.red{color:#FF8A8A}
+.sep2{width:1px;height:16px;background:#3A3C46}
+.upanel{width:340px;max-height:calc(100vh - 140px);overflow:auto;background:#111216;border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:12px}
+.ul{display:flex;flex-direction:column;gap:5px}
+.ulh{display:flex;gap:8px;align-items:baseline}.ulh b{color:#fff;font-weight:600}.ulh .faint{margin-left:auto}
+.ul i{width:100%;height:8px}
+.unote{font-size:11px;line-height:1.4}
+.uth{display:flex;justify-content:space-between;margin-bottom:4px}.uth b{color:#fff;font-weight:600}
+.ut table{width:100%;border-collapse:collapse;font-size:11.5px}
+.ut th{color:#9A9CA8;font-weight:500;text-align:left;padding:3px 0;border-bottom:1px solid #2C2E36;height:auto;background:none;position:static}
+.ut td{padding:3px 0;border-bottom:1px solid #1F2027;height:auto;color:#E8E8EE}
+.ut th:not(:first-child),.ut td:not(:first-child){text-align:right}
+/* person tags: status sits right under the name and role, same width; a longer status scrolls (marquee) */
+.ov .tag[data-id]{gap:0;align-items:stretch}
+.ov .tag[data-id] .nm{border-radius:3px 3px 0 0}
+.ov .tag[data-id] .pill{display:flex;min-width:0;border-radius:0 0 3px 3px;padding:0 5px 0 3px}
+.ov .tag[data-id] .pill .mq{flex:1;min-width:0;overflow:hidden;text-align:center;container-type:inline-size}
+.ov .tag[data-id] .pill .mq > span{display:inline-block;white-space:nowrap;animation:mq 8s ease-in-out infinite alternate}
+@keyframes mq{0%,15%{transform:translateX(0)}85%,100%{transform:translateX(min(0px,calc(100cqw - 100%)))}}
+/* a file path in a chat reply: click to open */
+.bm a.fpath{display:inline;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:11.5px;background:var(--acc-soft);color:var(--acc);border-radius:3px;padding:1px 4px;text-decoration:none;cursor:pointer;overflow-wrap:anywhere}
+.bm a.fpath:hover{text-decoration:underline}
+.bm a.fpath svg.ic{width:11px;height:11px;vertical-align:-1px;margin-right:3px}

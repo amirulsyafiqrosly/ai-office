@@ -538,7 +538,7 @@ export async function renderOffice(container, opt = {}) {
     // badge after the name: Manager (dark, with a star) or the staff's role (in their colour)
     const badge = p.mgr ? `<span class="mgr"><img src="${EMO('star')}">Manager</span>`
       : p.role ? `<span class="mgr role" style="background:${shadeHex(col, -0.18)}">${esc(p.role.length > 22 ? p.role.slice(0, 20) + '...' : p.role)}</span>` : '';
-    const html = `<div class="nm${p.mgr ? ' hasmgr' : badge ? ' hasrole' : ''}" style="color:${shadeHex(col, -0.18)};border-color:${col}">${esc(p.name)}${badge}</div><div class="pill ${S.cls}"><img src="${EMO(r.note ? 'laptop' : S.icon)}">${esc(txt.length > 32 ? txt.slice(0, 30) + '...' : txt)}</div>`;
+    const html = `<div class="nm${p.mgr ? ' hasmgr' : badge ? ' hasrole' : ''}" style="color:${shadeHex(col, -0.18)};border-color:${col}">${esc(p.name)}${badge}</div><div class="pill ${S.cls}"><img src="${EMO(r.note ? 'laptop' : S.icon)}"><span class="mq"><span>${esc(txt.length > 90 ? txt.slice(0, 88) + '...' : txt)}</span></span></div>`;
     if (html !== r.tagHtml) { d.innerHTML = html; r.tagHtml = html; d.title = txt; }
   }
   function setStatus(status) {
