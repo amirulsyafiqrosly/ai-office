@@ -33,9 +33,16 @@ assert.strictEqual(s.today.people.siti.tokens, 400); assert.strictEqual(s.today.
 assert.ok(Math.abs(s.week.cost - 1) < 1e-9);
 assert.strictEqual(s.limits.five_hour.used, 91);
 assert.strictEqual(changed, 4);
+changed = 0;
+// a resumed conversation reports its running total: only the difference counts
+u.see({ ...result(10, 0.30), session_id: 's1' }, 'pa', 'chat');
+u.see({ ...result(10, 0.38), session_id: 's1' }, 'pa', 'chat');
+u.see({ ...result(10, 0.05), session_id: 's2' }, 'pa', 'chat');
+const runs = u.runs(0).slice(-3).map((x) => Math.round(x.cost * 100) / 100);
+assert.deepStrictEqual(runs, [0.3, 0.08, 0.05]);
 // runs older than 7 days drop out
 fs.appendFileSync(path.join(dir, '.office', 'usage.jsonl'), JSON.stringify({ at: new Date(Date.now() - 9 * 864e5).toISOString(), who: 'pa', input: 9, output: 0, cacheWrite: 0, cacheRead: 0, cost: 9 }) + '\n');
-assert.strictEqual(u.summary().week.runs, 3);
+assert.strictEqual(u.summary().week.runs, 6);
 
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('ok usage: limits, runs, totals\n\n1 usage test passed');

@@ -75,7 +75,7 @@ how much you have used. To keep it light:
 - The manager runs on Opus and the staff on Sonnet, at medium effort. Change it per person on the Staff page.
 - Runs only load the tools that person needs, and long chats start fresh with a short recap.
 
-As an example, the poster and deck above (manager plus one staff, start to finish) used about $0.40 of
+As an example, the poster and deck above (manager plus one staff, start to finish) used about $0.30 of
 Claude usage at API prices. On a Claude subscription you are not billed this; it counts toward your plan's limits.
 
 ## What staff can and cannot touch
