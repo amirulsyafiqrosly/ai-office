@@ -339,3 +339,6 @@ body.term #work.board{top:136px}
 .wk .now{display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wk .now:before{content:"\25B8\00a0"}
 .wk .btn{margin-top:2px}
+/* slim scrollbars everywhere (no arrow buttons); light on the dark code blocks */
+*{scrollbar-width:thin;scrollbar-color:#C9CBD3 transparent}
+.bm pre{scrollbar-color:rgba(255,255,255,.28) transparent}
