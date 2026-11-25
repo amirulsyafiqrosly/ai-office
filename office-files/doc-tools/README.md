@@ -8,7 +8,8 @@ the file.
    ```js
    const t = require(String.raw`TOOLS_DIR`);
    ```
-3. Run it: `node "<folder>/make-<thing>.cjs"`. Only `node` on a script saved in the office is allowed.
+3. Run it: `node "<folder>/make-<thing>.cjs"`. That exact form is the only command allowed: no `node -e`, no
+   `;`, `|`, `>` or `2>/dev/null`. To check something (a file's size, a value), do it inside the script.
 4. Check the file exists and is not empty, and report the file's full path in backticks. Keep the script next
    to the file: when the boss wants a change, edit the script and run it again.
 5. Save results next to the work they belong to: `projects/<project>/` (or your staff folder).
