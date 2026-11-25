@@ -148,6 +148,10 @@ Start it so it keeps running after this chat ends:
   (opens its own window). Do not use `cmd /c start "" ...`: PowerShell drops the `""` and Git Bash rewrites `/c`, so only an empty window opens.
 - Mac: `open "<office folder>/Start AI Office.command"`
 - Linux: `nohup "<office folder>/start-office.sh" >/dev/null 2>&1 &`
+- WSL (Linux inside Windows): same as Linux. The dashboard opens in the Windows browser, and file links in chats
+  open in Windows apps. Keep the office in the Linux home folder (`~/...`), not under `/mnt/c` (much slower).
+  Next time, the user starts it from a WSL terminal with `./start-office.sh` in the office folder. WSL has its
+  own Claude Code login and MCP list, separate from Windows.
 
 It opens http://localhost:4747 in the browser (or the next free port; it prints the address).
 
