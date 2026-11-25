@@ -1,15 +1,17 @@
 // The live 3D office (Three.js), built from the office's own people:
 // the boss in a glass room, the PA just outside it, customer-service staff at the
-// booth outside, everyone else at desks (up to 8). Rendered as a still; the page
-// re-renders it when someone's status changes.
+// booth outside, everyone else at desks (up to 8) in a tidy grid. One WebGL renderer is kept
+// for the page's whole life; status and the customer queue update the live scene in place.
 // Floor coords: x (right-down), y (left-down), z (up)  ->  Three: X = x, Y = z, Z = y.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from './vendor/RoundedBoxGeometry.js';
 
 const W = 14, D = 11.5;
 const BOSS = { colour: '#8338EC', skin: '#EBBE93', hair: '#3A2A22' };
-// desk slots in the team area, in fill order (spread so name tags do not stack)
-const SLOTS = [[8.5, 4.3], [4.9, 7.0], [11.0, 4.5], [7.9, 6.7], [5.2, 4.3], [7.9, 9.0], [5.2, 9.3], [10.4, 6.8]];
+// desk slots in the team area: a grid of 3 per row, filled row by row. Row 1 starts below the boss
+// room's glass (the walking lane runs behind each row). The last row has 2: the meeting table is there.
+const COLS = [4.8, 7.9, 11.0], ROWS = [4.4, 6.95, 9.5];
+const SLOTS = ROWS.flatMap((y) => COLS.map((x) => [x, y])).slice(0, 8);
 const CS_ROLE = /customer|service|support|reception|front ?desk|help ?desk/i;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hex = (v, d) => (/^#[0-9a-fA-F]{6}$/.test(v || '') ? v : d);
@@ -46,7 +48,9 @@ export async function buildOffice(opt = {}) {
   for (const n of ['office_building', 'crown']) emoji[n] = await loadImg(EMO(n));
 
   const scene = new THREE.Group();
-  const mats = new Map();
+  const mats = new Map(), geos = new Map();
+  // same shape, same geometry: people and furniture share their buffers (less GPU memory)
+  const G = (Cls, ...a) => { const k = Cls.name + a.join(','); if (!geos.has(k)) geos.set(k, new Cls(...a)); return geos.get(k); };
   const mat = (c, o = {}) => {
     const key = c + JSON.stringify(o);
     if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial({ color: c, roughness: o.r ?? 0.82, metalness: o.m ?? 0, flatShading: !!o.flat, emissive: o.em || '#000', emissiveIntensity: o.ei ?? 0 }));
@@ -56,21 +60,23 @@ export async function buildOffice(opt = {}) {
   // rounded box in floor coords: corner (x,y,z), size (w,d,h)
   const B = (x, y, z, w, d, h, c, r = 0.06, o = {}) => {
     const rr = Math.max(0.001, Math.min(r, w / 2 - 0.001, d / 2 - 0.001, h / 2 - 0.001));
-    const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, rr), typeof c === 'string' ? mat(c, o) : c);
+    const m = new THREE.Mesh(G(RoundedBoxGeometry, w, h, d, 3, rr), typeof c === 'string' ? mat(c, o) : c);
     m.position.set(x + w / 2, z + h / 2, y + d / 2); return add(m, o.cast !== false);
   };
   const CYL = (x, y, z, rt, rb, h, c, seg = 32, o = {}) => {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), typeof c === 'string' ? mat(c, o) : c);
+    const m = new THREE.Mesh(G(THREE.CylinderGeometry, rt, rb, h, seg), typeof c === 'string' ? mat(c, o) : c);
     m.position.set(x, z + h / 2, y); return add(m, o.cast !== false);
   };
   const SPH = (x, y, z, r, c, o = {}) => {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(r, o.seg || 24, o.seg ? Math.round(o.seg * 0.7) : 18), typeof c === 'string' ? mat(c, o) : c);
+    const m = new THREE.Mesh(G(THREE.SphereGeometry, r, o.seg || 24, o.seg ? Math.round(o.seg * 0.7) : 18), typeof c === 'string' ? mat(c, o) : c);
     m.position.set(x, z, y); return add(m, o.cast !== false);
   };
   const canvasTex = (w, h, draw) => {
     const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
     draw(cv.getContext('2d'), w, h);
-    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    if (opt.freeCanvas) t.onUpdate = () => { t.onUpdate = null; cv.width = cv.height = 1; }; // the GPU has it now
+    return t;
   };
   const texMat = (t, o = {}) => new THREE.MeshStandardMaterial({ map: t, roughness: o.r ?? 0.85, transparent: !!o.transparent });
   // plane on back-right wall (y = const, facing +Z)
@@ -123,7 +129,7 @@ export async function buildOffice(opt = {}) {
     g.fillStyle = '#B9E4F5'; g.beginPath(); g.roundRect(0, 0, w, h, 40); g.fill();
     g.strokeStyle = '#fff'; g.lineWidth = 8; g.setLineDash([26, 18]); g.beginPath(); g.roundRect(36, 36, w - 72, h - 72, 26); g.stroke();
   });
-  const rugM = texMat(rugTex, { transparent: true }); planeF(4.4, 12.9, 2.6, 10.6, 0.012, rugM);
+  const rugM = texMat(rugTex, { transparent: true }); planeF(4.4, 12.9, 2.6, 10.85, 0.012, rugM);
   // welcome mat
   const matTex = canvasTex(600, 180, (g, w, h) => {
     g.fillStyle = '#FF6B6B'; g.beginPath(); g.roundRect(0, 0, w, h, 26); g.fill();
@@ -220,22 +226,23 @@ export async function buildOffice(opt = {}) {
   }
   function laptop(x, y, z, lidCol = '#B8BFD1') {
     B(x, y, z, 0.78, 0.5, 0.04, '#D5DAE6', 0.015);
-    const lid = new THREE.Mesh(new RoundedBoxGeometry(0.78, 0.5, 0.035, 2, 0.012), mat(lidCol, { r: 0.4, m: 0.3 }));
+    const lid = new THREE.Mesh(G(RoundedBoxGeometry, 0.78, 0.5, 0.035, 2, 0.012), mat(lidCol, { r: 0.4, m: 0.3 }));
     lid.position.set(x + 0.39, z + 0.27, y + 0.52); lid.rotation.x = 0.18; add(lid);
-    const logo = new THREE.Mesh(new THREE.CircleGeometry(0.05, 20), mat('#FFFFFF', { em: '#FFFFFF', ei: 0.6 }));
+    const logo = new THREE.Mesh(G(THREE.CircleGeometry, 0.05, 20), mat('#FFFFFF', { em: '#FFFFFF', ei: 0.6 }));
     logo.position.set(x + 0.39, z + 0.3, y + 0.545); logo.rotation.x = 0.18; scene.add(logo);
   }
   function mug(x, y, z, c) { CYL(x, y, z, 0.09, 0.08, 0.2, c, 20); }
+  // a desk is 2 m wide (x - 0.3 to x + 1.7); the person sits at x + 0.75
   function desk(x, y, col) {
-    B(x - 0.4, y, 0.78, 2.3, 1.15, 0.08, '#FFFFFF', 0.03);
-    B(x - 0.35, y + 0.05, 0, 0.1, 1.05, 0.78, '#D9DDE8', 0.02);
-    B(x + 1.75, y + 0.05, 0, 0.1, 1.05, 0.78, '#D9DDE8', 0.02);
-    B(x - 0.3, y + 0.95, 0.12, 2.1, 0.08, 0.62, col, 0.03);
+    B(x - 0.3, y, 0.78, 2.0, 1.15, 0.08, '#FFFFFF', 0.03);
+    B(x - 0.25, y + 0.05, 0, 0.1, 1.05, 0.78, '#D9DDE8', 0.02);
+    B(x + 1.55, y + 0.05, 0, 0.1, 1.05, 0.78, '#D9DDE8', 0.02);
+    B(x - 0.2, y + 0.95, 0.12, 1.8, 0.08, 0.62, col, 0.03);
     // laptop to the left of the seat, so the camera can see the typing hand on the right
-    laptop(x - 0.12, y + 0.08, 0.86);
-    mug(x + 1.72, y + 0.62, 0.86, '#FFFFFF');
-    B(x + 1.0, y + 0.4, 0.86, 0.5, 0.38, 0.05, '#FFE08A', 0.01);
-    B(x + 1.05, y + 0.42, 0.91, 0.46, 0.34, 0.03, '#FFFFFF', 0.01);
+    laptop(x - 0.08, y + 0.08, 0.86);
+    mug(x + 1.5, y + 0.66, 0.86, '#FFFFFF');
+    B(x + 0.9, y + 0.4, 0.86, 0.5, 0.38, 0.05, '#FFE08A', 0.01);
+    B(x + 0.95, y + 0.42, 0.91, 0.46, 0.34, 0.03, '#FFFFFF', 0.01);
     chair(x + 0.75, y - 0.45);
   }
 
@@ -243,11 +250,12 @@ export async function buildOffice(opt = {}) {
   const anchors = {};
   function limb(a, b, r, c) {
     const va = new THREE.Vector3(...a), vb = new THREE.Vector3(...b), len = va.distanceTo(vb);
-    const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 12), mat(c));
+    const m = new THREE.Mesh(G(THREE.CapsuleGeometry, r, len, 6, 12), mat(c));
     m.position.copy(va.clone().add(vb).multiplyScalar(0.5));
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vb.clone().sub(va).normalize());
     m.castShadow = true; return m;
   }
+  const blush = new THREE.MeshStandardMaterial({ color: '#FF8FA3', transparent: true, opacity: 0.55, roughness: 1 });
   // A person is a small rig: root (floor) > body (rises when standing) > hips, shoulders, head.
   // Poses and movement are driven later by the animation loop in renderOffice.
   function person(x, y, o) {
@@ -258,39 +266,39 @@ export async function buildOffice(opt = {}) {
     const add2 = (parent, geo, c, px, py, pz) => { const m = new THREE.Mesh(geo, typeof c === 'string' ? mat(c) : c); m.position.set(px, py, pz); m.castShadow = true; parent.add(m); return m; };
     const hips = [-0.13, 0.13].map((dx) => {
       const hip = new THREE.Group(); hip.position.set(dx, SEAT - 0.02, 0.05); body.add(hip);
-      add2(hip, new THREE.CapsuleGeometry(0.105, 0.36, 6, 12), pants, 0, -0.25, 0);
-      add2(hip, new THREE.SphereGeometry(0.11, 12, 8), '#2B2233', 0, -0.5, 0.05);
+      add2(hip, G(THREE.CapsuleGeometry, 0.105, 0.36, 6, 12), pants, 0, -0.25, 0);
+      add2(hip, G(THREE.SphereGeometry, 0.11, 12, 8), '#2B2233', 0, -0.5, 0.05);
       return hip;
     });
-    const torso = add2(body, new RoundedBoxGeometry(0.62, 0.72, 0.42, 3, 0.16), o.shirt, 0, SEAT + 0.36, 0);
+    const torso = add2(body, G(RoundedBoxGeometry, 0.62, 0.72, 0.42, 3, 0.16), o.shirt, 0, SEAT + 0.36, 0);
     const arms = [-1, 1].map((side) => {
       const sh = new THREE.Group(); sh.position.set(0.31 * side, SEAT + 0.6, 0.02); body.add(sh);
-      add2(sh, new THREE.CapsuleGeometry(0.085, 0.34, 6, 12), sleeve, 0, -0.22, 0);
-      add2(sh, new THREE.SphereGeometry(0.078, 12, 8), o.skin, 0, -0.45, 0);
+      add2(sh, G(THREE.CapsuleGeometry, 0.085, 0.34, 6, 12), sleeve, 0, -0.22, 0);
+      add2(sh, G(THREE.SphereGeometry, 0.078, 12, 8), o.skin, 0, -0.45, 0);
       return sh;
     });
     const head = new THREE.Group(); head.position.set(0, SEAT + 0.72 + 0.36, 0); body.add(head);
     const hp = (geo, c, px, py, pz) => add2(head, geo, c, px, py, pz);
     if (o.tud) {
-      hp(new THREE.SphereGeometry(0.4, 32, 24), o.tud, 0, 0.04, -0.04);
-      const drape = hp(new THREE.SphereGeometry(0.44, 32, 24), o.tud, 0, -0.3, -0.02); drape.scale.set(1.12, 0.7, 1.0);
-      hp(new THREE.SphereGeometry(0.32, 32, 24), o.skin, 0, -0.01, 0.12);
-      const band = hp(new THREE.TorusGeometry(0.3, 0.035, 10, 40), shadeHex(o.tud, -0.12), 0, 0.0, 0.28); band.scale.set(0.95, 1.1, 1);
+      hp(G(THREE.SphereGeometry, 0.4, 32, 24), o.tud, 0, 0.04, -0.04);
+      const drape = hp(G(THREE.SphereGeometry, 0.44, 32, 24), o.tud, 0, -0.3, -0.02); drape.scale.set(1.12, 0.7, 1.0);
+      hp(G(THREE.SphereGeometry, 0.32, 32, 24), o.skin, 0, -0.01, 0.12);
+      const band = hp(G(THREE.TorusGeometry, 0.3, 0.035, 10, 40), shadeHex(o.tud, -0.12), 0, 0.0, 0.28); band.scale.set(0.95, 1.1, 1);
     } else {
-      hp(new THREE.SphereGeometry(0.36, 32, 24), o.skin, 0, 0, 0);
-      const hair = hp(new THREE.SphereGeometry(0.375, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.42), o.hair || '#2B2233', 0, 0.02, -0.03); hair.rotation.x = -0.25;
-      hp(new THREE.SphereGeometry(0.08, 12, 8), o.skin, -0.35, -0.02, 0); hp(new THREE.SphereGeometry(0.08, 12, 8), o.skin, 0.35, -0.02, 0);
+      hp(G(THREE.SphereGeometry, 0.36, 32, 24), o.skin, 0, 0, 0);
+      const hair = hp(G(THREE.SphereGeometry, 0.375, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.42), o.hair || '#2B2233', 0, 0.02, -0.03); hair.rotation.x = -0.25;
+      hp(G(THREE.SphereGeometry, 0.08, 12, 8), o.skin, -0.35, -0.02, 0); hp(G(THREE.SphereGeometry, 0.08, 12, 8), o.skin, 0.35, -0.02, 0);
     }
     const fz = o.tud ? 0.42 : 0.345, ey = o.tud ? 0.0 : 0.02;
     const open = new THREE.Group(), shut = new THREE.Group(); head.add(open); head.add(shut);
     [-0.12, 0.12].forEach((ex) => {
-      const e = add2(open, new THREE.SphereGeometry(0.05, 16, 12), '#2B2233', ex, ey, fz - 0.03); e.scale.set(1, 1.2, 0.6);
-      add2(open, new THREE.SphereGeometry(0.016, 8, 6), '#FFFFFF', ex + 0.015, ey + 0.025, fz - 0.003);
-      const c = add2(shut, new THREE.TorusGeometry(0.045, 0.014, 6, 16, Math.PI), '#2B2233', ex, ey, fz - 0.02); c.rotation.z = Math.PI;
+      const e = add2(open, G(THREE.SphereGeometry, 0.05, 16, 12), '#2B2233', ex, ey, fz - 0.03); e.scale.set(1, 1.2, 0.6);
+      add2(open, G(THREE.SphereGeometry, 0.016, 8, 6), '#FFFFFF', ex + 0.015, ey + 0.025, fz - 0.003);
+      const c = add2(shut, G(THREE.TorusGeometry, 0.045, 0.014, 6, 16, Math.PI), '#2B2233', ex, ey, fz - 0.02); c.rotation.z = Math.PI;
     });
     shut.visible = false;
-    const mouth = hp(new THREE.TorusGeometry(0.06, 0.014, 6, 16, Math.PI), '#B23A48', 0, ey - 0.12, fz - 0.035); mouth.rotation.z = Math.PI;
-    [-0.18, 0.18].forEach((ex) => { const b = hp(new THREE.SphereGeometry(0.05, 12, 8), new THREE.MeshStandardMaterial({ color: '#FF8FA3', transparent: true, opacity: 0.55, roughness: 1 }), ex, ey - 0.08, fz - 0.06); b.scale.set(1, 0.6, 0.4); });
+    const mouth = hp(G(THREE.TorusGeometry, 0.06, 0.014, 6, 16, Math.PI), '#B23A48', 0, ey - 0.12, fz - 0.035); mouth.rotation.z = Math.PI;
+    [-0.18, 0.18].forEach((ex) => { const b = hp(G(THREE.SphereGeometry, 0.05, 12, 8), blush, ex, ey - 0.08, fz - 0.06); b.scale.set(1, 0.6, 0.4); });
     g.position.set(x, 0, y); g.rotation.y = o.rot ?? 0.35;
     scene.add(g);
     g.traverse((m) => { if (m.isMesh) m.receiveShadow = true; });
@@ -391,7 +399,7 @@ export async function buildOffice(opt = {}) {
   plan.desks.forEach((s, i) => {
     const [x, y] = s.slot; desk(x, y, hex(s.colour, '#8D93A5'));
     anchors[s.id] = staff(s, x + 0.75, y - 0.42, st(s.id));
-    if (i % 2 === 0) plant(x + 1.7, y + 0.3, 0.33); // desk toy
+    plant(x + 1.48, y + 0.3, 0.33); // desk toy
   });
 
   // ---------------- customers queue outside ----------------
@@ -399,8 +407,9 @@ export async function buildOffice(opt = {}) {
   const LOOKS = [[6.2, D + 2.4, '#FFD166', '#06D6A0', '#F1C27D', '#2B2233'],
                  [8.1, D + 2.0, '#C77DFF', '#118AB2', '#E0AC69', '#5A3825'],
                  [10.0, D + 1.6, '#4CC9F0', '#EF476F', '#FAD6B3', '#111111']];
-  const CQ = (opt.queue || []).slice(0, 3).map((q, i) => [...LOOKS[i], q.text, q.ticket ? `#${q.ticket}` : '']);
+  const CQ = LOOKS.map((l, i) => { const q = (opt.queue || [])[i]; return [...l, q ? q.text : '', q && q.ticket ? `#${q.ticket}` : '']; });
   const custA = CQ.map(([x, y, shirt, pants, skin, hair], i) => person(x, y, { shirt, pants, skin, hair, rot: i === 0 ? -0.5 : -0.1 }));
+  custA.forEach((a, i) => { a.group.visible = i < (opt.queue || []).length; });
 
   // ---------------- lights ----------------
   const lights = [new THREE.HemisphereLight('#FFFFFF', '#F3D2A8', 1.55)];
@@ -416,9 +425,23 @@ export async function buildOffice(opt = {}) {
 
 // Renders the office into a container and keeps it alive: people type, look around,
 // stand up now and then, and walk over when work is handed out or reported back.
-// Returns { width, height, setStatus(status), delegate(staffId), report(staffId), dispose() }.
+// One renderer (one WebGL context) for the page's whole life: a rebuild swaps the scene, it does not
+// open a second context (that doubled GPU memory for a moment, every time).
+let R = null, running = null;
+function renderer3d(onRestore) {
+  if (R) return R;
+  R = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+  R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap; R.shadowMap.autoUpdate = false;
+  R.outputColorSpace = THREE.SRGBColorSpace; R.toneMapping = THREE.NoToneMapping;
+  R.domElement.addEventListener('webglcontextlost', (e) => e.preventDefault());
+  R.domElement.addEventListener('webglcontextrestored', () => { if (onRestore) onRestore(); });
+  return R;
+}
+
+// Returns { width, height, setStatus(status), setQueue(queue, count), setPixelRatio(r), delegate(staffId), report(staffId), dispose() }.
 export async function renderOffice(container, opt = {}) {
-  const built = await buildOffice({ shadowSize: 2048, ...opt });
+  const built = await buildOffice({ shadowSize: 2048, freeCanvas: true, ...opt });
+  if (running) running(); // stop the old scene's loop before this one takes the renderer
   const scene = new THREE.Scene(); scene.add(built.root); built.lights.forEach((l) => scene.add(l));
   const anchors = built.anchors, youA = anchors.you, custA = built.custA, CQ = built.CQ;
   const people = [{ id: 'pa', ...(opt.pa || {}), mgr: true }, ...(opt.staff || [])];
@@ -444,12 +467,9 @@ export async function renderOffice(container, opt = {}) {
     cam.updateProjectionMatrix();
   }
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const renderer = renderer3d(opt.onRestore);
   renderer.setPixelRatio(opt.dpr || window.devicePixelRatio || 1);
   renderer.setSize(cw, ch);
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.NoToneMapping;
   container.style.position = 'relative'; container.style.width = cw + 'px'; container.style.height = ch + 'px';
   container.appendChild(renderer.domElement);
 
@@ -463,13 +483,19 @@ export async function renderOffice(container, opt = {}) {
     const d = put('', toPx(a)); d.dataset.id = p.id; tags.set(p.id, d);
   }
   const bossTag = put(`<div class="pill boss"><img src="${EMO('crown')}">You (Boss)</div>`, toPx(youA));
-  custA.forEach((a, i) => {
-    const t = CQ[i][6] || '';
-    a.rig.tag = put(`<div class="bub">${esc(t.length > 34 ? t.slice(0, 32) + '...' : t)}</div>`, toPx(a));
-    if (CQ[i][7]) put(`<div class="tk">${esc(CQ[i][7])}</div>`, toPx(new THREE.Vector3(CQ[i][0], 1.0, CQ[i][1] + 0.25)), 'mid');
-  });
-  const n = opt.queueCount ?? CQ.length;
-  put(`<div class="qs"><img src="${EMO('ticket')}">${n ? `Customer queue: ${n}` : 'No customers waiting'}</div>`, toPx(new THREE.Vector3(8.4, -0.1, D + 3.9)), 'mid');
+  const tickets = custA.map((a, i) => { a.rig.tag = put('', toPx(a)); return put('', toPx(new THREE.Vector3(CQ[i][0], 1.0, CQ[i][1] + 0.25)), 'mid'); });
+  const qsTag = put('', toPx(new THREE.Vector3(8.4, -0.1, D + 3.9)), 'mid');
+  let queueKey = null;
+  function setQueue(queue = [], count = queue.length) {
+    const key = JSON.stringify([queue.slice(0, 3), count]); if (key === queueKey) return; queueKey = key;
+    custA.forEach((a, i) => {
+      const q = queue[i], t = q ? q.text || '' : '';
+      a.group.visible = !!q; a.rig.tag.style.display = q ? '' : 'none'; tickets[i].style.display = q && q.ticket ? '' : 'none';
+      if (q) { a.rig.tag.innerHTML = `<div class="bub">${esc(t.length > 34 ? t.slice(0, 32) + '...' : t)}</div>`; tickets[i].innerHTML = q.ticket ? `<div class="tk">#${esc(q.ticket)}</div>` : ''; }
+    });
+    qsTag.innerHTML = `<div class="qs"><img src="${EMO('ticket')}">${count ? `Customer queue: ${count}` : 'No customers waiting'}</div>`;
+    dirty = true;
+  }
   youA.rig.tag = bossTag;
 
   // ---------------- rigs, routes ----------------
@@ -522,6 +548,7 @@ export async function renderOffice(container, opt = {}) {
       drawTag(r);
     }
     youA.rig.mood = 'working';
+    dirty = true;
   }
 
   // action queues: each step runs until done
@@ -642,7 +669,15 @@ export async function renderOffice(container, opt = {}) {
   }
 
   // ---------------- loop: smooth while anyone moves, slow when all is quiet ----------------
-  let alive = true, last = performance.now(), acc = 0;
+  // Shadows are redrawn only when someone walks or stands up, and once a second otherwise.
+  let alive = true, last = performance.now(), acc = 0, shadowAge = 0, dirty = true;
+  const moving = () => all.some((r) => r.step && r.step.type !== 'pose' && r.step.type !== 'waitIdle');
+  function draw(dt) {
+    shadowAge += dt;
+    if (dirty || shadowAge > 1 || moving()) { renderer.shadowMap.needsUpdate = true; shadowAge = 0; dirty = false; }
+    renderer.render(scene, cam);
+    placeTags();
+  }
   function frame(now) {
     if (!alive) return;
     requestAnimationFrame(frame);
@@ -651,19 +686,23 @@ export async function renderOffice(container, opt = {}) {
     acc += dt;
     if (acc < (busy() ? 1 / 30 : 1 / 8)) return;
     for (let left = acc; left > 0; left -= 0.05) tick(Math.min(0.05, left)); // small steps keep turns and walks smooth
-    acc = 0;
-    renderer.render(scene, cam);
-    placeTags();
+    draw(acc); acc = 0;
   }
   setStatus(opt.status || {});
-  tick(0.5); renderer.render(scene, cam); placeTags();
+  setQueue(opt.queue || [], opt.queueCount ?? (opt.queue || []).length);
+  tick(0.5); draw(0);
   requestAnimationFrame(frame);
+  const stop = () => { alive = false; };
+  running = stop;
 
-  // free the GPU memory when the page re-renders (browsers allow only a few WebGL contexts)
+  // sharper or lighter as the page zooms: the drawing buffer follows the size it is shown at
+  const setPixelRatio = (r) => { if (!alive || Math.abs(renderer.getPixelRatio() - r) < 0.01) return; renderer.setPixelRatio(r); dirty = true; draw(0); };
+  // free this scene's GPU memory; the renderer stays for the next scene
   const dispose = () => {
-    alive = false;
+    alive = false; if (running === stop) running = null;
     scene.traverse((o) => { if (o.geometry) o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : m ? [m] : []).forEach((x) => { if (x.map) x.map.dispose(); x.dispose(); }); });
-    renderer.dispose(); renderer.forceContextLoss(); container.innerHTML = '';
+    renderer.renderLists.dispose();
+    if (renderer.domElement.parentNode === container) container.innerHTML = '';
   };
-  return { width: cw, height: ch, dispose, setStatus, delegate, report };
+  return { width: cw, height: ch, dispose, setStatus, setQueue, setPixelRatio, delegate, report };
 }

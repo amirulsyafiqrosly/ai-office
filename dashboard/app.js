@@ -178,15 +178,15 @@ async function draw3d() {
     queue: open.slice(0, 3).map((x) => ({ text: (x.text || '').split('\n')[0], ticket: x.ticket })),
     queueCount: open.length,
   };
-  const { status, ...layout } = opts;
-  const key = JSON.stringify(layout); // people, company, queue: a rebuild. Status alone: the live scene updates.
-  if (key === sceneKey) { if (scene && !building) { scene.setStatus(status); walks(); } return; }
+  const { status, queue, queueCount, ...layout } = opts;
+  const key = JSON.stringify(layout); // people or company: a rebuild. Status and the queue: the live scene updates.
+  if (key === sceneKey) { if (scene && !building) { scene.setStatus(status); scene.setQueue(queue, queueCount); walks(); } return; }
   if (building) { again = true; return; }
   building = true; sceneKey = key;
   try {
     office3d = office3d || await import('./office3d.js');
     const inner = document.createElement('div');
-    const r = await office3d.renderOffice(inner, { ...opts, width: 900, dpr: Math.min(2.5, (window.devicePixelRatio || 1) * 1.75) });
+    const r = await office3d.renderOffice(inner, { ...opts, width: 900, dpr: pixelRatio(scene ? stageScale() : 1.6), onRestore: () => { sceneKey = ''; draw3d(); } });
     const stage = $('#officeStage'); if (!stage) return;
     if (scene) scene.dispose();
     stage.replaceChildren(inner); scene = r;
@@ -219,15 +219,22 @@ function walks() {
   prevPeople = JSON.parse(JSON.stringify(now));
 }
 
+// The office is drawn at the size it is shown (zoom x screen sharpness), capped: no bigger buffer than needed.
+const pixelRatio = (k) => Math.max(1, Math.min(2.5, Math.round(k * (window.devicePixelRatio || 1) * 4) / 4));
+function stageScale() {
+  const wrap = $('#officeWrap'); if (!scene || !wrap || !wrap.offsetWidth) return 1.6;
+  return Math.min(wrap.clientWidth / scene.width, wrap.clientHeight / scene.height) * 0.94 * V.zoom;
+}
+let prTimer = null;
 function fitOffice(animate) {
   const stage = $('#officeStage'), wrap = $('#officeWrap');
   if (!stage || !scene || !wrap.offsetWidth) return;
-  const base = Math.min(wrap.clientWidth / scene.width, wrap.clientHeight / scene.height) * 0.94;
-  const k = base * V.zoom, occ = ($('#wins') || {}).offsetWidth || 0;
+  const k = stageScale(), occ = ($('#wins') || {}).offsetWidth || 0;
   const shift = occ ? -Math.min(occ / 3, Math.max(0, (wrap.clientWidth - scene.width * k) / 2)) : 0; // never off the left edge
   stage.style.transition = animate ? 'transform .25s ease' : 'none';
   stage.style.transform = `translate(calc(-50% + ${(V.panX + shift).toFixed(1)}px), calc(-50% + ${V.panY.toFixed(1)}px)) scale(${k.toFixed(4)})`;
   const pct = $('#zPct'); if (pct) pct.textContent = `${Math.round(V.zoom * 100)}%`;
+  clearTimeout(prTimer); prTimer = setTimeout(() => { if (scene) scene.setPixelRatio(pixelRatio(stageScale())); }, 300);
   saveView();
 }
 function zoomAt(z, cx, cy) { // keep the point under the cursor still
@@ -703,7 +710,9 @@ function renderChats() {
     const body = $('.wb', w);
     const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
     const intro = id === 'pa' ? `${esc(p.name)} is your manager. Tell them what you need; they hand it to the right staff.` : `Direct chat with ${esc(p.name)} (${esc(p.role)}).`;
-    body.innerHTML = `<div class="wsys">${intro}</div>${c.messages.map((m) => msgHtml(id, m)).join('')}<div class="live"></div>`;
+    const last = c.messages[c.messages.length - 1] || {};
+    const sig = `${c.messages.length}|${last.at || ''}|${(last.text || '').length}|${intro}`;
+    if (body.dataset.sig !== sig) { body.dataset.sig = sig; body.innerHTML = `<div class="wsys">${intro}</div>${c.messages.map((m) => msgHtml(id, m)).join('')}<div class="live"></div>`; }
     renderLive(id, true);
     if (atEnd || !body.dataset.seen) { body.scrollTop = body.scrollHeight; body.dataset.seen = '1'; }
     $('textarea', w).placeholder = c.running ? `Message ${p.name}... (goes next, after this reply)` : `Message ${p.name}...`;
