@@ -64,7 +64,7 @@ The dashboard opens at http://localhost:4747.
 | **Needs your OK** (top right) | Anything that leaves the office (sending an email, a quotation, recording a payment) waits here for Approve or Reject. You can set an action to Always allow. |
 | **Staff** | Each person's job, rules, look, AI (Claude or ChatGPT), model and effort, and the commands they may run. |
 | **Projects, Inbox** | One folder per project with its own notes; customer requests waiting for the team. |
-| **Usage bar** (bottom left) | Your Claude plan use: the 5-hour and weekly limits, when they reset, and tokens per person today. |
+| **Usage bar** (bottom left) | Your Claude plan use (5-hour and weekly limits, when they reset), the same for your ChatGPT plan when someone runs on ChatGPT, and tokens per person today. |
 
 You can also run `claude` in the office folder and talk to the manager in the terminal. Same office, same files.
 

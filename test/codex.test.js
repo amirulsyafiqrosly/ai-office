@@ -154,6 +154,29 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.strictEqual(P.providerId(c, c.staff[1].id), 'codex');
   });
 
+  await test('ChatGPT plan limits come from Codex\'s session log; ChatGPT runs have no cost', () => {
+    const home = path.join(tmp, 'codex-home'), day = path.join(home, 'sessions', '2026', '11', '26');
+    fs.mkdirSync(day, { recursive: true });
+    const thread = '01a21616-ec78-7022-8e26-ff1ebf48968b';
+    const rl = (p, s) => JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', rate_limits: { limit_id: 'codex', primary: { used_percent: p, window_minutes: 300, resets_at: 1795683809 }, secondary: { used_percent: s, window_minutes: 10080, resets_at: 1796252589 } } } });
+    fs.writeFileSync(path.join(day, `rollout-2026-11-26T12-22-11-${thread}.jsonl`), `${rl(5, 10)}\n{"type":"other"}\n${rl(9, 16)}\n`);
+    assert.deepStrictEqual(codex.limitsFor(thread, home), {
+      five_hour: { used: 9, resets: '2026-11-26T09:03:29.000Z', status: '' },
+      seven_day: { used: 16, resets: '2026-12-02T23:03:09.000Z', status: '' } });
+    assert.strictEqual(codex.limitsFor('00000000-0000-0000-0000-000000000000', home), null);
+    assert.strictEqual(codex.limitsFor('../../etc', home), null);
+    const before = process.env.CODEX_HOME; process.env.CODEX_HOME = home;
+    try {
+      const u = new Usage(dir);
+      u.see({ type: 'thread.started', thread_id: thread }, 'siti', 'task', 't9', 'codex');
+      u.see({ type: 'turn.completed', usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 5 } }, 'siti', 'task', 't9', 'codex');
+      const s = u.summary();
+      assert.strictEqual(s.limitsBy.codex.five_hour.used, 9);
+      assert.strictEqual(s.today.people.siti.priced, 0, 'ChatGPT runs: tokens only');
+      assert.ok(s.today.people.pa.priced === 0 && s.today.people.pa.tokens > 0);
+    } finally { if (before === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = before; }
+  });
+
   await test('parser: real event shapes', () => {
     const ev = (j) => codex.parse(j).map((e) => e.t);
     assert.deepStrictEqual(ev({ type: 'thread.started', thread_id: 'x' }), ['session', 'thinking']);

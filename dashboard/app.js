@@ -833,18 +833,25 @@ function renderUsage() {
   let el = $('#usage');
   if (!el) { el = document.createElement('div'); el.id = 'usage'; document.body.append(el); el.addEventListener('click', (e) => { if (e.target.closest('.ubar')) { usageOpen = !usageOpen; renderUsage(); } }); }
   const u = S.usage || {}, L = u.limits || {}, five = L.five_hour, week = L.seven_day, today = (u.today || { tokens: 0, cost: 0, people: {} });
+  // ChatGPT plan limits, when someone runs on ChatGPT (read from Codex's own log after each run)
+  const G = (u.limitsBy || {}).codex || {}, gFive = G.five_hour, gWeek = G.seven_day, hasG = !!(gFive || gWeek);
   const meter = (label, w) => (w ? `<span class="um ${level(w.used)}"><b>${label}</b><i><s style="width:${Math.min(100, w.used)}%"></s></i>${w.used}%</span>` : '');
-  const worst = Math.max(five ? five.used : 0, week ? week.used : 0);
-  const bar = `<div class="ubar ${level(worst)}${usageOpen ? ' open' : ''}" title="Claude plan use. Click for details.">${five || week ? meter('5h', five) + meter('Week', week) : '<span class="faint">Plan use shows after the first chat or task</span>'}${five && five.resets ? `<span class="faint">resets ${until(five.resets)}</span>` : ''}<span class="sep2"></span><span>Today <b>${fmtN(today.tokens)}</b> tokens</span>${icon('chevron-down')}</div>`;
+  const worst = Math.max(five ? five.used : 0, week ? week.used : 0, gFive ? gFive.used : 0, gWeek ? gWeek.used : 0);
+  const claudeM = five || week ? (hasG ? '<span class="faint">Claude</span>' : '') + meter('5h', five) + meter('Week', week) + (five && five.resets && !hasG ? `<span class="faint">resets ${until(five.resets)}</span>` : '') : '';
+  const gptM = hasG ? `${claudeM ? '<span class="sep2"></span>' : ''}<span class="faint">ChatGPT</span>${meter('5h', gFive)}${meter('Week', gWeek)}` : '';
+  const bar = `<div class="ubar ${level(worst)}${usageOpen ? ' open' : ''}" title="Plan use. Click for details.">${claudeM || gptM ? claudeM + gptM : '<span class="faint">Plan use shows after the first chat or task</span>'}<span class="sep2"></span><span>Today <b>${fmtN(today.tokens)}</b> tokens</span>${icon('chevron-down')}</div>`;
   let panel = '';
   if (usageOpen) {
     const lim = (label, w) => (w ? `<div class="ul"><div class="ulh"><b>${label}</b><span>${w.used}% used</span><span class="faint">${w.resets ? `resets in ${until(w.resets)}` : ''}</span></div><i class="${level(w.used)}"><s style="width:${Math.min(100, w.used)}%"></s></i></div>` : '');
-    const rows = (t) => Object.entries(t.people || {}).sort((a, b) => b[1].tokens - a[1].tokens).map(([id, p]) => `<tr><td>${esc(nameOf(id === 'pa' ? '' : id) || pa().name)}</td><td>${p.runs}</td><td>${fmtN(p.tokens)}</td><td>${fmtUsd(p.cost)}</td></tr>`).join('') || '<tr><td colspan="4" class="faint">Nothing yet</td></tr>';
-    const table = (title, t) => `<div class="ut"><div class="uth"><b>${title}</b><span>${fmtN(t.tokens || 0)} tokens, ${fmtUsd(t.cost || 0)}</span></div><table><tr><th>Who</th><th>Runs</th><th>Tokens</th><th>Cost</th></tr>${rows(t)}</table></div>`;
+    // cost is known for Claude runs only: someone with only ChatGPT runs shows a dash, not $0.00
+    const cost = (p) => (p.priced || p.priced === undefined ? fmtUsd(p.cost) : '<span class="faint" title="ChatGPT runs: tokens only">—</span>');
+    const rows = (t) => Object.entries(t.people || {}).sort((a, b) => b[1].tokens - a[1].tokens).map(([id, p]) => `<tr><td>${esc(nameOf(id === 'pa' ? '' : id) || pa().name)}</td><td>${p.runs}</td><td>${fmtN(p.tokens)}</td><td>${cost(p)}</td></tr>`).join('') || '<tr><td colspan="4" class="faint">Nothing yet</td></tr>';
+    const table = (title, t) => `<div class="ut"><div class="uth"><b>${title}</b><span>${fmtN(t.tokens || 0)} tokens${t.priced ? `, ${fmtUsd(t.cost || 0)} Claude` : ''}</span></div><table><tr><th>Who</th><th>Runs</th><th>Tokens</th><th>Cost</th></tr>${rows(t)}</table></div>`;
     panel = `<div class="upanel">
-      ${five || week ? `${lim('5-hour limit', five)}${lim('Weekly limit', week)}<div class="faint unote">For your whole Claude account. Last updated ${L.at ? when(L.at) : 'never'} (updates when someone works).</div>` : '<div class="faint unote">Plan limits show after the first chat or staff task.</div>'}
+      ${five || week ? `${hasG ? '<div class="ulh"><b>Claude</b></div>' : ''}${lim('5-hour limit', five)}${lim('Weekly limit', week)}<div class="faint unote">For your whole Claude account. Last updated ${L.at ? when(L.at) : 'never'} (updates when someone works).</div>` : hasG ? '' : '<div class="faint unote">Plan limits show after the first chat or staff task.</div>'}
+      ${hasG ? `<div class="ulh"><b>ChatGPT</b></div>${lim('5-hour limit', gFive)}${lim('Weekly limit', gWeek)}<div class="faint unote">For your whole ChatGPT plan (Codex). Last updated ${when(G.at)} (after each ChatGPT run).</div>` : ''}
       ${table('Today', today)}${table('Last 7 days', u.week || {})}
-      <div class="faint unote">Counts chats and staff tasks run from this dashboard. Cost is the API price; on a Claude subscription you are not billed this.</div></div>`;
+      <div class="faint unote">Counts chats and staff tasks run from this dashboard. Cost is the API price of Claude runs; on a Claude subscription you are not billed this. ChatGPT runs show tokens only.</div></div>`;
   }
   el.innerHTML = panel + bar;
 }
