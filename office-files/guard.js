@@ -228,7 +228,7 @@ if (require.main === module) {
     const say = (r) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
     // the office checks this mark for a Codex run: no mark means the guard is not running, and the run is stopped
     if (provider !== 'claude' && /^[a-z0-9]{1,40}$/.test(run)) { try { fs.mkdirSync(path.join(dir, '.office', 'runs'), { recursive: true }); fs.writeFileSync(path.join(dir, '.office', 'runs', `${run}.guard`), ''); } catch { /* no mark: the run stops */ } }
-    if (provider !== 'claude' && /^mcp__/.test(input.tool_name || '')) return say({ decision: 'deny', reason: 'Add-on tools work with Claude only for now.' });
+    if (provider !== 'claude' && /^mcp__/.test(input.tool_name || '')) return say({ decision: 'deny', reason: `${input.tool_name} is not available in the office (it would run past the guard). Use your shell commands and apply_patch. For PowerPoint, Excel, Word, PDF or PNG: write a make-<thing>.cjs script in the project folder and run it with node "<script>.cjs" (how: .office/doc-tools/README.md).` });
     if (ASK_FIRST[input.tool_name]) {
       let grants = [];
       try { grants = JSON.parse(fs.readFileSync(path.join(dir, '.office', 'grants.json'), 'utf8')); } catch { /* none yet */ }

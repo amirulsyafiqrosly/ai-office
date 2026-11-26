@@ -32,6 +32,14 @@ Watch out:
 - Project-local `.codex/` config is ignored unless the folder is trusted; we pass everything with `-c` instead.
 - A fresh run costs ~20-45k input tokens (mostly cached).
 
+Later (from real use):
+- Codex picks its own shell `workdir` (often the office folder), so the guard cannot tell the staff from the folder:
+  the office passes AI_OFFICE_WHO.
+- The user's own Codex plugins bring tools such as `mcp__node_repl__js` (runs any JavaScript, past the guard).
+  Runs use `--ignore-user-config` (login kept) and turn off apps, plugins, browser/computer use, image generation,
+  sub-agents, goals and web search. The only setting copied over is `[windows] sandbox` (e.g. "elevated"); without it
+  the workspace is read-only on Windows.
+
 ## Gemini CLI: not used
 
 Tried with gemini-cli 0.71.1 and an API key: it works (own GEMINI_CLI_HOME, BeforeTool hook as the guard),

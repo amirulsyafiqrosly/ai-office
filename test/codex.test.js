@@ -88,6 +88,9 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.match(JSON.parse(cval(c.args, 'developer_instructions')), /create one task file/);
     assert.strictEqual(cval(c.args, 'project_doc_fallback_filenames'), '["CLAUDE.md"]');
     assert.strictEqual(cval(c.args, 'sandbox_mode'), '"workspace-write"');
+    assert.ok(c.args.includes('--ignore-user-config'), 'none of the user\'s own Codex plugins or MCP servers (node_repl runs any code)');
+    for (const f of ['apps', 'plugins', 'computer_use', 'multi_agent']) assert.strictEqual(cval(c.args, `features.${f}`), 'false');
+    assert.strictEqual(cval(c.args, 'web_search'), '"disabled"');
     const hook = cval(c.args, 'hooks.PreToolUse');
     assert.ok(hook.includes(JSON.stringify(path.join(dir, '.office', 'guard.js')).slice(1, -1).replace(/\\\\/g, '\\\\\\\\')) || hook.includes('guard.js'));
     if (process.platform === 'win32') assert.match(hook, /command="& \\"/, 'PowerShell needs & to run the hook');
@@ -175,6 +178,16 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       assert.strictEqual(s.today.people.siti.priced, 0, 'ChatGPT runs: tokens only');
       assert.ok(s.today.people.pa.priced === 0 && s.today.people.pa.tokens > 0);
     } finally { if (before === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = before; }
+  });
+
+  await test('only the Windows sandbox setting is taken from the user\'s Codex config', () => {
+    const home = path.join(tmp, 'codex-cfg'); fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(path.join(home, 'config.toml'), 'model = "x"\n[plugins."a@b"]\nenabled = true\n\n[windows]\nsandbox = "elevated"\n\n[projects.\'c:\\\\x\']\ntrust_level = "trusted"\n');
+    assert.strictEqual(codex.windowsSandbox(home), process.platform === 'win32' ? 'elevated' : null);
+    fs.writeFileSync(path.join(home, 'config.toml'), '[windows]\nsandbox = "elevated\\" ; rm"\n');
+    assert.strictEqual(codex.windowsSandbox(home), null, 'odd values are ignored');
+    fs.writeFileSync(path.join(home, 'config.toml'), 'model = "x"\n');
+    assert.strictEqual(codex.windowsSandbox(home), null);
   });
 
   await test('parser: real event shapes', () => {
