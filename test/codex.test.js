@@ -87,7 +87,8 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.ok(!c.args.includes('Hello from the boss'), 'the message never goes on the command line');
     assert.match(JSON.parse(cval(c.args, 'developer_instructions')), /create one task file/);
     assert.strictEqual(cval(c.args, 'project_doc_fallback_filenames'), '["CLAUDE.md"]');
-    assert.strictEqual(cval(c.args, 'sandbox_mode'), '"workspace-write"');
+    assert.strictEqual(cval(c.args, 'sandbox_mode'), '"danger-full-access"', 'the guard checks commands and edits; the Windows sandbox broke on linked folders');
+    assert.strictEqual(cval(c.args, 'sandbox_workspace_write.writable_roots'), null);
     assert.ok(c.args.includes('--ignore-user-config'), 'none of the user\'s own Codex plugins or MCP servers (node_repl runs any code)');
     for (const f of ['apps', 'plugins', 'computer_use', 'multi_agent']) assert.strictEqual(cval(c.args, `features.${f}`), 'false');
     assert.strictEqual(cval(c.args, 'web_search'), '"disabled"');
@@ -95,7 +96,7 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.ok(hook.includes(JSON.stringify(path.join(dir, '.office', 'guard.js')).slice(1, -1).replace(/\\\\/g, '\\\\\\\\')) || hook.includes('guard.js'));
     if (process.platform === 'win32') assert.match(hook, /command="& \\"/, 'PowerShell needs & to run the hook');
     assert.strictEqual(cval(c.args, 'model_reasoning_effort'), '"medium"');
-    assert.strictEqual(cval(c.args, 'sandbox_workspace_write.network_access'), null, 'the PA runs no commands: no network');
+
     const u = usage.summary().today;
     assert.strictEqual(u.runs, 1); assert.strictEqual(u.cost, 0); assert.strictEqual(u.input, 23256 - 13952);
   });
@@ -178,16 +179,6 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       assert.strictEqual(s.today.people.siti.priced, 0, 'ChatGPT runs: tokens only');
       assert.ok(s.today.people.pa.priced === 0 && s.today.people.pa.tokens > 0);
     } finally { if (before === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = before; }
-  });
-
-  await test('only the Windows sandbox setting is taken from the user\'s Codex config', () => {
-    const home = path.join(tmp, 'codex-cfg'); fs.mkdirSync(home, { recursive: true });
-    fs.writeFileSync(path.join(home, 'config.toml'), 'model = "x"\n[plugins."a@b"]\nenabled = true\n\n[windows]\nsandbox = "elevated"\n\n[projects.\'c:\\\\x\']\ntrust_level = "trusted"\n');
-    assert.strictEqual(codex.windowsSandbox(home), process.platform === 'win32' ? 'elevated' : null);
-    fs.writeFileSync(path.join(home, 'config.toml'), '[windows]\nsandbox = "elevated\\" ; rm"\n');
-    assert.strictEqual(codex.windowsSandbox(home), null, 'odd values are ignored');
-    fs.writeFileSync(path.join(home, 'config.toml'), 'model = "x"\n');
-    assert.strictEqual(codex.windowsSandbox(home), null);
   });
 
   await test('parser: real event shapes', () => {

@@ -37,8 +37,11 @@ Later (from real use):
   the office passes AI_OFFICE_WHO.
 - The user's own Codex plugins bring tools such as `mcp__node_repl__js` (runs any JavaScript, past the guard).
   Runs use `--ignore-user-config` (login kept) and turn off apps, plugins, browser/computer use, image generation,
-  sub-agents, goals and web search. The only setting copied over is `[windows] sandbox` (e.g. "elevated"); without it
-  the workspace is read-only on Windows.
+  sub-agents, goals and web search.
+- No Codex sandbox (`danger-full-access`), like Claude Code: the guard checks every command and file edit. The Windows
+  sandbox ("elevated") must change folder permissions on every writable folder; one it may not change (a linked
+  `C:laragonwww`: "write ACE grant failed ... Access is denied", in ~/.codex/.sandbox/sandbox.*.log) made every
+  command and edit fail with "setup refresh had errors".
 
 ## Gemini CLI: not used
 
