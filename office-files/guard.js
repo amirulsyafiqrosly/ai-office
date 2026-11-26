@@ -4,6 +4,9 @@
 // it lets them run node on a script saved in the office (to make PowerPoint, Excel, Word, PDF, images). Some commands are always refused: the boss runs those.
 // It also checks the "ask first" add-on actions (send a quotation or invoice, record a payment):
 // allowed only when the boss set them to "Always allow" in Settings, or approved this exact one.
+// For ChatGPT (Codex CLI) and Gemini CLI runs it also checks file edits (apply_patch, write_file, replace),
+// lets plain read commands through for Codex (it reads with the shell),
+// and leaves a mark in .office/runs/ so the office knows it really ran.
 // It decides; it does not run anything and sends nothing anywhere.
 const fs = require('fs');
 const path = require('path');
@@ -59,6 +62,54 @@ function splitCommand(cmd) {
 }
 const firstWord = (s) => { const m = /^("[^"]*"|'[^']*'|\S+)\s*([\s\S]*)$/.exec(s); return m ? [m[1], m[2]] : [s, '']; };
 
+// Codex only (it has no Read tool): plain read-only commands, every path in the office or a linked folder.
+const READ = ['get-content', 'gc', 'cat', 'type', 'get-childitem', 'gci', 'ls', 'dir', 'rg', 'select-string', 'sls', 'findstr', 'test-path', 'get-item', 'pwd', 'get-location', 'resolve-path'];
+function readOnly(p, isInside) {
+  let [w, rest] = firstWord(p);
+  if (!READ.includes(w.toLowerCase())) return false;
+  while (rest) {
+    [w, rest] = firstWord(rest.trim());
+    if (/^--(pre|hostname-bin)\b/i.test(w)) return false; // ripgrep options that run another program
+    const x = w.replace(/^["']|["']$/g, '');
+    if (x.startsWith('-')) continue;
+    if ((/[\\/:~]/.test(x) || x.startsWith('.')) && !isInside(x)) return false;
+  }
+  return true;
+}
+
+// Files a dashboard run never changes: the office's own settings, hooks, guard and the boss's OKs.
+function protectedFile(rel) {
+  const r = rel.replace(/\\/g, '/').toLowerCase();
+  return r === 'office.json' || /^\.(office|claude|codex|gemini)(\/|$)/.test(r) || /^staff\/[^/]+\/\.(claude|codex|gemini)(\/|$)/.test(r);
+}
+
+// File edits by Codex (apply_patch) and Gemini (write_file, replace): every file must be in the office or a
+// linked folder, and not one of the protected files. Returns { decision, reason }.
+function decidePatch(input, office, opts = {}) {
+  const ti = input.tool_input || {};
+  const text = String(ti.command || ti.patch || ti.input || '');
+  const files = [...text.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm)].map((m) => m[1]);
+  return decideFiles(files, input, office, opts);
+}
+function decideWrite(input, office, opts = {}) {
+  const f = (input.tool_input || {}).file_path;
+  return decideFiles(f ? [String(f)] : [], input, office, opts);
+}
+function decideFiles(files, input, office, opts = {}) {
+  const win = opts.win ?? process.platform === 'win32';
+  const P = win ? path.win32 : path.posix;
+  if (!files.length) return { decision: 'deny', reason: 'Could not read which files this edit changes.' };
+  const norm = (d) => (win ? P.resolve(d).toLowerCase() : P.resolve(d));
+  const places = [office.dir, ...(office.linked || [])].map(norm);
+  for (const f of files) {
+    const full = realPath(f, input.cwd || office.dir, win);
+    const x = full && norm(full);
+    if (!x || !places.some((pl) => x === pl || x.startsWith(pl + P.sep))) return { decision: 'deny', reason: `${f} is outside the office and the linked folders.` };
+    if (x.startsWith(norm(office.dir) + P.sep) && protectedFile(P.relative(norm(office.dir), x))) return { decision: 'deny', reason: `${f} is kept by the office itself: the boss changes it in the dashboard.` };
+  }
+  return { decision: 'allow', reason: 'files in the office' };
+}
+
 // input: Claude Code's hook input. office: office.json plus { dir, linked: [paths] }.
 // Returns { decision: 'allow' | 'deny' | null, reason }.
 function decide(input, office, opts = {}) {
@@ -69,6 +120,9 @@ function decide(input, office, opts = {}) {
   const staff = (office.staff || []).find((s) => s.id === staffId);
   const name = staff ? staff.name : 'The PA';
   const no = (reason) => ({ decision: opts.chat ? 'deny' : null, reason });
+  const norm = (d) => (win ? P.resolve(d).toLowerCase() : P.resolve(d)); // Windows paths ignore case
+  const places = [office.dir, ...(office.linked || [])].map(norm);
+  const inside = (d) => { if (!d) return false; const x = norm(d); return places.some((pl) => x === pl || x.startsWith(pl + P.sep)); };
 
   // one plain command, or "cd <folder> && command && command" - nothing else
   const parts = cmd ? splitCommand(cmd) : null;
@@ -77,13 +131,12 @@ function decide(input, office, opts = {}) {
     // in the terminal the boss is there to say yes or no himself
     return opts.chat ? { decision: 'deny', reason: `"${d.trim()}" is never run from the dashboard. The boss runs it in a terminal (or asks for it in Needs your OK).` } : { decision: null };
   }
+  // Codex reads files with shell commands: plain read-only commands inside the office are fine for everyone
+  if (opts.provider === 'codex' && parts.every((p) => readOnly(p, (d) => inside(realPath(d, input.cwd || office.dir, win))))) return { decision: 'allow', reason: 'reading files in the office' };
   if (!staff) return no(`${name} does not run commands. Hand it to a staff who has commands turned on (Staff page).`);
   const allowed = [...cmdsOf(staff).flatMap((k) => (PRESETS[k] ? PRESETS[k].allow : [])), ...(staff.customCommands || [])];
   if (!allowed.length) return no(`${name} has no commands turned on. The boss can tick them on the Staff page.`);
 
-  const norm = (d) => (win ? P.resolve(d).toLowerCase() : P.resolve(d)); // Windows paths ignore case
-  const places = [office.dir, ...(office.linked || [])].map(norm);
-  const inside = (d) => { if (!d) return false; const x = norm(d); return places.some((pl) => x === pl || x.startsWith(pl + P.sep)); };
   const elsewhere = no(`${name} may only work in the office folder or a linked folder.`);
   let i = 0;
   if (/^cd\s/.test(parts[0])) {
@@ -159,7 +212,7 @@ function useGrant(dir, id, when = new Date().toISOString()) {
   } catch { /* approval file gone: the grant is what counts */ }
 }
 
-module.exports = { PRESETS, ALWAYS_DENY, ASK_FIRST, cmdsOf, decide, decideAction, sameInput };
+module.exports = { PRESETS, ALWAYS_DENY, ASK_FIRST, cmdsOf, decide, decideAction, decidePatch, decideWrite, readOnly, protectedFile, sameInput };
 
 if (require.main === module) {
   let raw = '';
@@ -167,9 +220,24 @@ if (require.main === module) {
   process.stdin.on('end', () => {
     let input, office;
     try { input = JSON.parse(raw); } catch { return; }
-    const dir = path.dirname(__dirname);
+    // long real paths on both sides (Windows short names like DOPPEL~1 would not match the long form)
+    const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
+    const dir = real(path.dirname(__dirname));
+    if (input.cwd) input.cwd = real(input.cwd);
     try { office = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')); } catch { return; }
-    const say = (r) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
+    const provider = process.env.AI_OFFICE_PROVIDER || 'claude', run = process.env.AI_OFFICE_RUN || '';
+    // Gemini CLI reads { decision, reason }; Claude Code and Codex read hookSpecificOutput
+    const say = (r) => process.stdout.write(JSON.stringify(provider === 'gemini' ? { decision: r.decision, reason: r.reason }
+      : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
+    // the office checks this mark for a Codex or Gemini run: no mark means the guard is not running, and the run is stopped
+    if (provider !== 'claude' && /^[a-z0-9]{1,40}$/.test(run)) { try { fs.mkdirSync(path.join(dir, '.office', 'runs'), { recursive: true }); fs.writeFileSync(path.join(dir, '.office', 'runs', `${run}.guard`), ''); } catch { /* no mark: the run stops */ } }
+    if (input.hook_event_name === 'BeforeAgent') return; // Gemini: only the mark, before the model starts
+    // Gemini's names for the same things
+    if (input.tool_name === 'run_shell_command') {
+      const ti = input.tool_input || {};
+      input = { ...input, tool_name: 'Bash', tool_input: { command: ti.command }, cwd: ti.dir_path ? path.resolve(input.cwd || dir, String(ti.dir_path)) : input.cwd };
+    }
+    if (provider !== 'claude' && /^mcp_/.test(input.tool_name || '')) return say({ decision: 'deny', reason: 'Add-on tools work with Claude only for now.' });
     if (ASK_FIRST[input.tool_name]) {
       let grants = [];
       try { grants = JSON.parse(fs.readFileSync(path.join(dir, '.office', 'grants.json'), 'utf8')); } catch { /* none yet */ }
@@ -178,7 +246,8 @@ if (require.main === module) {
       if (r.grant) useGrant(dir, r.grant);
       return say(r);
     }
-    if (input.tool_name !== 'Bash') return;
+    const write = provider === 'gemini' && ['write_file', 'replace'].includes(input.tool_name);
+    if (input.tool_name !== 'Bash' && input.tool_name !== 'apply_patch' && !write) return;
     // linked folders: office-wide, plus each project's "linked:" line
     const linked = (office.linked || []).map((l) => l.path);
     try {
@@ -187,8 +256,15 @@ if (require.main === module) {
         if (m) linked.push(m[1]);
       }
     } catch { /* no projects */ }
-    const r = decide(input, { ...office, dir, linked }, { chat: process.env.AI_OFFICE_CHAT === '1' });
-    if (!r.decision) return; // terminal: Claude Code asks the boss as usual
-    say(r);
+    const o = { ...office, dir, linked: linked.map(real) };
+    try {
+      if (input.tool_name === 'apply_patch') return say(decidePatch(input, o));
+      if (write) return say(decideWrite(input, o));
+      const r = decide(input, o, { chat: process.env.AI_OFFICE_CHAT === '1', provider });
+      if (!r.decision) return; // terminal: Claude Code asks the boss as usual
+      say(r);
+    } catch (e) { // never let a step through unchecked from the dashboard
+      if (provider !== 'claude' || process.env.AI_OFFICE_CHAT === '1') say({ decision: 'deny', reason: `The office guard could not check this: ${e.message}` });
+    }
   });
 }

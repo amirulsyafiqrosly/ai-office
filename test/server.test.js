@@ -199,20 +199,31 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
       const T = require('../lib/templates');
       // model and effort: defaults, changed per staff and for the manager, used by the terminal subagent too
       let run = (await req('GET', '/api/run')).body;
-      assert.deepStrictEqual(run.people.pa, { model: 'opus', effort: 'medium' });
-      assert.deepStrictEqual(run.people.aina, { model: 'sonnet', effort: 'medium' });
+      assert.deepStrictEqual(run.people.pa, { provider: 'claude', model: 'opus', effort: 'medium' });
+      assert.deepStrictEqual(run.people.aina, { provider: 'claude', model: 'sonnet', effort: 'medium' });
       assert.match(read('.claude/agents/aina.md'), /^model: sonnet$/m);
       assert.strictEqual((await req('PUT', '/api/staff/aina', { model: 'haiku', effort: 'low' })).status, 200);
       assert.match(read('.claude/agents/aina.md'), /^model: haiku$/m);
       assert.strictEqual((await req('PUT', '/api/staff/aina', { model: 'gpt-9' })).status, 400);
       assert.strictEqual((await req('PUT', '/api/manager', { model: 'fable', effort: 'high' })).status, 200);
       run = (await req('GET', '/api/run')).body;
-      assert.deepStrictEqual(run.people.pa, { model: 'fable', effort: 'high' });
-      assert.deepStrictEqual(run.people.aina, { model: 'haiku', effort: 'low' });
+      assert.deepStrictEqual(run.people.pa, { provider: 'claude', model: 'fable', effort: 'high' });
+      assert.deepStrictEqual(run.people.aina, { provider: 'claude', model: 'haiku', effort: 'low' });
       assert.deepStrictEqual(T.runFlags(JSON.parse(read('office.json')), 'aina'), ['--model', 'haiku', '--effort', 'low']);
       await req('PUT', '/api/staff/aina', { model: 'default', effort: 'default' });
       assert.deepStrictEqual(T.runFlags(JSON.parse(read('office.json')), 'aina'), []);
       assert.match(read('.claude/agents/aina.md'), /^model: inherit$/m);
+      // another AI: its own model list; a Claude-only model is dropped on the switch; back to Claude works
+      await req('PUT', '/api/staff/aina', { model: 'haiku' });
+      assert.strictEqual((await req('PUT', '/api/staff/aina', { provider: 'codex' })).status, 200);
+      run = (await req('GET', '/api/run')).body;
+      assert.deepStrictEqual(run.people.aina, { provider: 'codex', model: 'default', effort: 'default' });
+      assert.ok(run.providers.some((p) => p.id === 'codex') && run.modelsBy.codex.length);
+      assert.match(read('.claude/agents/aina.md'), /^model: inherit$/m);
+      assert.strictEqual((await req('PUT', '/api/staff/aina', { model: 'haiku' })).status, 400);
+      assert.strictEqual((await req('PUT', '/api/staff/aina', { provider: 'nope' })).status, 400);
+      assert.strictEqual((await req('PUT', '/api/staff/aina', { provider: 'claude', model: 'sonnet' })).status, 200);
+      assert.deepStrictEqual((await req('GET', '/api/run')).body.people.aina, { provider: 'claude', model: 'sonnet', effort: 'default' });
       // outside MCP servers: none without an add-on job; with one, the user's own servers but no claude.ai connectors
       const oc = JSON.parse(read('office.json'));
       assert.deepStrictEqual(T.mcpRun(oc, 'aina', true), { args: ['--strict-mcp-config'], env: {} });

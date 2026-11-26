@@ -333,13 +333,30 @@ function renderStaff() {
 }
 
 // Model and effort pickers (Staff page). Defaults come from the office until the boss changes them.
+// The AI (Claude or ChatGPT/Codex) picks which model and effort lists show.
+const runOpt = (list, v) => (list || []).map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
+const runNote = (p) => (p === 'codex' ? 'Runs on your ChatGPT plan (or OpenAI API key) through Codex CLI. Add-ons (invois.online) work with Claude only for now.'
+  : p === 'gemini' ? 'Runs on your Gemini API key (GEMINI_API_KEY, from aistudio.google.com) through Gemini CLI, billed or free-tier by Google. Add-ons work with Claude only for now.'
+  : 'A stronger model or more effort thinks harder and uses more of your Claude plan.');
 function runFields(who) {
   const r = S.run || { models: [], efforts: [], people: {} }, cur = r.people[who] || {};
-  const opt = (list, v) => list.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
-  return `<div class="grid2"><div><label class="lbl">Model</label><select class="in" name="model">${opt(r.models, cur.model)}</select></div>
-    <div><label class="lbl">Effort</label><select class="in" name="effort">${opt(r.efforts, cur.effort)}</select></div></div>
-    <div class="faint" style="font-size:11.5px;margin-top:4px;line-height:1.5">A stronger model or more effort thinks harder and uses more of your Claude plan.</div>`;
+  const prov = cur.provider || 'claude';
+  const provs = r.providers || [{ id: 'claude', label: 'Claude', installed: true }];
+  const models = (r.modelsBy || {})[prov] || r.models, efforts = (r.effortsBy || {})[prov] || r.efforts;
+  return `<label class="lbl">AI</label><select class="in" name="provider">${provs.map((p) => `<option value="${esc(p.id)}" ${p.id === prov ? 'selected' : ''} ${!p.installed && p.id !== prov ? 'disabled' : ''}>${esc(p.label)}${p.installed ? '' : ' (not installed)'}</option>`).join('')}</select>
+    <div class="grid2"><div><label class="lbl">Model</label><select class="in" name="model">${runOpt(models, cur.model)}</select></div>
+    <div><label class="lbl">Effort</label><select class="in" name="effort">${runOpt(efforts, cur.effort)}</select></div></div>
+    <div class="faint runnote" style="font-size:11.5px;margin-top:4px;line-height:1.5">${esc(runNote(prov))}</div>`;
 }
+// Picking another AI: show its own models and efforts (its defaults until the boss picks).
+document.addEventListener('change', (e) => {
+  const sel = e.target.closest('select[name=provider]'); if (!sel) return;
+  const f = sel.closest('.form'), r = S.run || {}, p = sel.value;
+  const def = p === 'claude' ? (r.defaults || {})[f && f.id === 'pf' ? 'pa' : 'staff'] || {} : (r.providerDefaults || {})[p] || { model: 'default', effort: 'default' };
+  $('[name=model]', f).innerHTML = runOpt((r.modelsBy || {})[p], def.model);
+  $('[name=effort]', f).innerHTML = runOpt((r.effortsBy || {})[p], def.effort);
+  $('.runnote', f).textContent = runNote(p);
+});
 // The office document tools install themselves on the first start; this says how that went.
 function docToolsLine() {
   const d = S.doctools || {};
@@ -359,7 +376,7 @@ function renderStaffForm() {
 ${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in the office folder. The team table in it updates by itself when you add, edit or archive staff.</div>
       <div class="pb form" id="pf">${runFields('pa')}</div>
       <div class="formfoot"><button class="btn pri" id="pSave">${icon('save')}Save</button></div>`;
-    $('#pSave').onclick = () => act(() => api('manager', 'PUT', { model: $('[name=model]', f).value, effort: $('[name=effort]', f).value }), 'Saved')
+    $('#pSave').onclick = () => act(() => api('manager', 'PUT', { provider: $('[name=provider]', f).value, model: $('[name=model]', f).value, effort: $('[name=effort]', f).value }), 'Saved')
       .then(async () => { S.run = await api('run'); renderStaffForm(); });
   } else {
     const s = S.staff.find((x) => x.id === id);
@@ -397,7 +414,7 @@ ${esc(pa().name)}'s instructions are in <span class="mono">CLAUDE.md</span> in t
       const val = (n) => $(`[name=${n}]`, f).value;
       act(() => api(`staff/${id}`, 'PUT', { name: val('name'), role: val('role'), job: val('job'), rules: val('rules').split('\n'), notes: val('notes'),
         commands: $$('[name=cmd]:checked', f).map((x) => x.value).filter((x) => x !== 'docs'), docs: $$('[name=cmd]:checked', f).some((x) => x.value === 'docs'),
-        customCommands: val('customCommands').split('\n').map((x) => x.trim()).filter(Boolean), model: val('model'), effort: val('effort'),
+        customCommands: val('customCommands').split('\n').map((x) => x.trim()).filter(Boolean), provider: val('provider'), model: val('model'), effort: val('effort'),
         colour: pick.colour, look: { scarf: $('[name=scarf]', f).checked, skin: pick.skin, hair: pick.hair } }), 'Saved')
         .then(async () => { S.dirty.delete('staff'); S.run = await api('run'); return refresh(['office', 'staff']); });
     };
