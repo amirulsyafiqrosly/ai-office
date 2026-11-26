@@ -1,7 +1,7 @@
 # Providers spike (2026-11-26)
 
 Can AI Office run staff on ChatGPT (Codex CLI) or Gemini (Gemini CLI) instead of Claude Code?
-Tested on Windows 11 with codex-cli 0.172.0 (logged in with a ChatGPT plan) and gemini-cli 0.71.1 (API key).
+Tested on Windows 11 with codex-cli 0.172.0 (logged in with a ChatGPT plan).
 
 ## Codex CLI: works
 
@@ -32,28 +32,8 @@ Watch out:
 - Project-local `.codex/` config is ignored unless the folder is trusted; we pass everything with `-c` instead.
 - A fresh run costs ~20-45k input tokens (mostly cached).
 
-## Gemini CLI: works, API key only
+## Gemini CLI: not used
 
-Tested with gemini-cli 0.71.1 and a Google AI Studio key in `GEMINI_API_KEY`.
-
-**Sign-in with a personal Google account is closed**: "This client is no longer supported for Gemini Code Assist
-for individuals ... migrate to the Antigravity suite". So no subscription route; API key (free tier or paid) only.
-
-| Need | How | Tested |
-|---|---|---|
-| Own settings, user's untouched | `GEMINI_CLI_HOME=<office>/.office/gemini-home` (a fresh home: no user skills, extensions, MCP). The user's `~/.gemini/settings.json` had `oauth-personal`, which overrides a workspace `.gemini/settings.json` and `GEMINI_DEFAULT_AUTH_TYPE`. `GEMINI_CLI_SYSTEM_SETTINGS_PATH` is refused unless an admin owns the folder. | yes |
-| API key sign-in | `security.auth.selectedType: "gemini-api-key"` in that home's settings | yes |
-| One run | `gemini -p "" -o stream-json --skip-trust --approval-mode yolo` with the message on stdin | yes |
-| Resume | `--resume <session_id>` (from `init`); unknown id: `Invalid session identifier` | yes |
-| Instructions file | `context.fileName: ["CLAUDE.md"]` | yes |
-| Extra system prompt | none: the office note goes at the top of a conversation's first message | yes |
-| Folders | `--include-directories <office>` plus linked folders; read tools stay inside the workspace | yes |
-| Guard hook | `hooks.BeforeTool` (matcher `.*`), `hooksConfig.enabled: true`; input `tool_name` (`run_shell_command` {command, dir_path}, `write_file`/`replace` {file_path}), `cwd`; deny with `{ "decision": "deny", "reason": "..." }` | yes |
-| Guard mark | `tool_use` is printed *before* BeforeTool runs, so the mark comes from `hooks.BeforeAgent` (runs before the model starts). `SessionStart` does **not** run with `-p`. | yes |
-| Models | `gemini --list-models`: auto, gemini-2.5-pro, gemini-3.5-flash, gemini-3.1-flash-lite | yes |
-
-Events: `init {session_id, model}`, `message {role, content, delta}` (the answer in pieces), `tool_use {tool_name, parameters}`,
-`tool_result {status, output}`, `result {status, stats: {input_tokens, output_tokens, cached, input}, error?}`.
-
-Watch out: the free tier has a small daily quota per model (`You have exhausted your daily quota on this model`).
-Shell is PowerShell 5 on Windows (same as Codex): `&&` fails, so the note tells them to use `git -C "<folder>"`.
+Tried with gemini-cli 0.71.1 and an API key: it works (own GEMINI_CLI_HOME, BeforeTool hook as the guard),
+but Google closed Gemini CLI sign-in for personal Google accounts, so there is no subscription route, and an
+API key gives no plan limits to show. Decided 2026-11-26: Claude and ChatGPT only; the Gemini adapter was removed.

@@ -32,10 +32,6 @@ File paths in the chat are links: click one and the file opens in its app (Power
 - Optional, to run some staff on ChatGPT instead (beta): [Codex CLI](https://github.com/openai/codex)
   (`npm i -g @openai/codex`, then `codex login` with your ChatGPT plan or an OpenAI API key). Then pick
   **AI: ChatGPT (Codex CLI)** for that person on the Staff page. Add-ons (invois.online) stay Claude only for now.
-- Optional, Gemini (beta, API key only: Google closed Gemini CLI sign-in for personal accounts):
-  `npm i -g @google/gemini-cli`, get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
-  set it once with `setx GEMINI_API_KEY "<key>"` (Windows) and restart the office. Then pick **AI: Gemini** on the
-  Staff page. The office uses its own Gemini settings (`.office/gemini-home`), never your `~/.gemini`.
 - Nothing else. The installer finds Node.js or puts a private copy in your home folder, and the office
   installs its own document tools the first time it starts.
 
@@ -66,7 +62,7 @@ The dashboard opens at http://localhost:4747.
 | **Office** | The live office. Who is working, on what, and who waits for you. The work board (top left) lists every running task with a Stop button. |
 | **Chat** (bottom right) | Talk to the manager, or to any staff directly. The manager gets a summary of direct chats. |
 | **Needs your OK** (top right) | Anything that leaves the office (sending an email, a quotation, recording a payment) waits here for Approve or Reject. You can set an action to Always allow. |
-| **Staff** | Each person's job, rules, look, AI (Claude, ChatGPT or Gemini), model and effort, and the commands they may run. |
+| **Staff** | Each person's job, rules, look, AI (Claude or ChatGPT), model and effort, and the commands they may run. |
 | **Projects, Inbox** | One folder per project with its own notes; customer requests waiting for the team. |
 | **Usage bar** (bottom left) | Your Claude plan use: the 5-hour and weekly limits, when they reset, and tokens per person today. |
 

@@ -336,7 +336,6 @@ function renderStaff() {
 // The AI (Claude or ChatGPT/Codex) picks which model and effort lists show.
 const runOpt = (list, v) => (list || []).map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
 const runNote = (p) => (p === 'codex' ? 'Runs on your ChatGPT plan (or OpenAI API key) through Codex CLI. Add-ons (invois.online) work with Claude only for now.'
-  : p === 'gemini' ? 'Runs on your Gemini API key (GEMINI_API_KEY, from aistudio.google.com) through Gemini CLI, billed or free-tier by Google. Add-ons work with Claude only for now.'
   : 'A stronger model or more effort thinks harder and uses more of your Claude plan.');
 function runFields(who) {
   const r = S.run || { models: [], efforts: [], people: {} }, cur = r.people[who] || {};

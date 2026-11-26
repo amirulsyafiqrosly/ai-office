@@ -4,9 +4,8 @@
 // it lets them run node on a script saved in the office (to make PowerPoint, Excel, Word, PDF, images). Some commands are always refused: the boss runs those.
 // It also checks the "ask first" add-on actions (send a quotation or invoice, record a payment):
 // allowed only when the boss set them to "Always allow" in Settings, or approved this exact one.
-// For ChatGPT (Codex CLI) and Gemini CLI runs it also checks file edits (apply_patch, write_file, replace),
-// lets plain read commands through for Codex (it reads with the shell),
-// and leaves a mark in .office/runs/ so the office knows it really ran.
+// For ChatGPT (Codex CLI) runs it also checks file edits (apply_patch), lets plain read commands through
+// (Codex reads with the shell), and leaves a mark in .office/runs/ so the office knows it really ran.
 // It decides; it does not run anything and sends nothing anywhere.
 const fs = require('fs');
 const path = require('path');
@@ -80,20 +79,16 @@ function readOnly(p, isInside) {
 // Files a dashboard run never changes: the office's own settings, hooks, guard and the boss's OKs.
 function protectedFile(rel) {
   const r = rel.replace(/\\/g, '/').toLowerCase();
-  return r === 'office.json' || /^\.(office|claude|codex|gemini)(\/|$)/.test(r) || /^staff\/[^/]+\/\.(claude|codex|gemini)(\/|$)/.test(r);
+  return r === 'office.json' || /^\.(office|claude|codex)(\/|$)/.test(r) || /^staff\/[^/]+\/\.(claude|codex)(\/|$)/.test(r);
 }
 
-// File edits by Codex (apply_patch) and Gemini (write_file, replace): every file must be in the office or a
-// linked folder, and not one of the protected files. Returns { decision, reason }.
+// Codex file edits (apply_patch): every file named in the patch must be in the office or a linked folder,
+// and not one of the protected files. Returns { decision, reason }.
 function decidePatch(input, office, opts = {}) {
   const ti = input.tool_input || {};
   const text = String(ti.command || ti.patch || ti.input || '');
   const files = [...text.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm)].map((m) => m[1]);
   return decideFiles(files, input, office, opts);
-}
-function decideWrite(input, office, opts = {}) {
-  const f = (input.tool_input || {}).file_path;
-  return decideFiles(f ? [String(f)] : [], input, office, opts);
 }
 function decideFiles(files, input, office, opts = {}) {
   const win = opts.win ?? process.platform === 'win32';
@@ -212,7 +207,7 @@ function useGrant(dir, id, when = new Date().toISOString()) {
   } catch { /* approval file gone: the grant is what counts */ }
 }
 
-module.exports = { PRESETS, ALWAYS_DENY, ASK_FIRST, cmdsOf, decide, decideAction, decidePatch, decideWrite, readOnly, protectedFile, sameInput };
+module.exports = { PRESETS, ALWAYS_DENY, ASK_FIRST, cmdsOf, decide, decideAction, decidePatch, readOnly, protectedFile, sameInput };
 
 if (require.main === module) {
   let raw = '';
@@ -226,18 +221,10 @@ if (require.main === module) {
     if (input.cwd) input.cwd = real(input.cwd);
     try { office = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')); } catch { return; }
     const provider = process.env.AI_OFFICE_PROVIDER || 'claude', run = process.env.AI_OFFICE_RUN || '';
-    // Gemini CLI reads { decision, reason }; Claude Code and Codex read hookSpecificOutput
-    const say = (r) => process.stdout.write(JSON.stringify(provider === 'gemini' ? { decision: r.decision, reason: r.reason }
-      : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
-    // the office checks this mark for a Codex or Gemini run: no mark means the guard is not running, and the run is stopped
+    const say = (r) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
+    // the office checks this mark for a Codex run: no mark means the guard is not running, and the run is stopped
     if (provider !== 'claude' && /^[a-z0-9]{1,40}$/.test(run)) { try { fs.mkdirSync(path.join(dir, '.office', 'runs'), { recursive: true }); fs.writeFileSync(path.join(dir, '.office', 'runs', `${run}.guard`), ''); } catch { /* no mark: the run stops */ } }
-    if (input.hook_event_name === 'BeforeAgent') return; // Gemini: only the mark, before the model starts
-    // Gemini's names for the same things
-    if (input.tool_name === 'run_shell_command') {
-      const ti = input.tool_input || {};
-      input = { ...input, tool_name: 'Bash', tool_input: { command: ti.command }, cwd: ti.dir_path ? path.resolve(input.cwd || dir, String(ti.dir_path)) : input.cwd };
-    }
-    if (provider !== 'claude' && /^mcp_/.test(input.tool_name || '')) return say({ decision: 'deny', reason: 'Add-on tools work with Claude only for now.' });
+    if (provider !== 'claude' && /^mcp__/.test(input.tool_name || '')) return say({ decision: 'deny', reason: 'Add-on tools work with Claude only for now.' });
     if (ASK_FIRST[input.tool_name]) {
       let grants = [];
       try { grants = JSON.parse(fs.readFileSync(path.join(dir, '.office', 'grants.json'), 'utf8')); } catch { /* none yet */ }
@@ -246,8 +233,7 @@ if (require.main === module) {
       if (r.grant) useGrant(dir, r.grant);
       return say(r);
     }
-    const write = provider === 'gemini' && ['write_file', 'replace'].includes(input.tool_name);
-    if (input.tool_name !== 'Bash' && input.tool_name !== 'apply_patch' && !write) return;
+    if (input.tool_name !== 'Bash' && input.tool_name !== 'apply_patch') return;
     // linked folders: office-wide, plus each project's "linked:" line
     const linked = (office.linked || []).map((l) => l.path);
     try {
@@ -259,7 +245,6 @@ if (require.main === module) {
     const o = { ...office, dir, linked: linked.map(real) };
     try {
       if (input.tool_name === 'apply_patch') return say(decidePatch(input, o));
-      if (write) return say(decideWrite(input, o));
       const r = decide(input, o, { chat: process.env.AI_OFFICE_CHAT === '1', provider });
       if (!r.decision) return; // terminal: Claude Code asks the boss as usual
       say(r);
