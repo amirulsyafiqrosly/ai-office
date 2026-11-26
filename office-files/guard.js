@@ -111,7 +111,9 @@ function decide(input, office, opts = {}) {
   const win = opts.win ?? process.platform === 'win32';
   const P = win ? path.win32 : path.posix;
   const cmd = String((input.tool_input || {}).command || '').trim();
-  const staffId = input.agent_type || ((P.relative(office.dir, input.cwd || office.dir).split(/[\\/]/)[0] === 'staff') ? P.relative(office.dir, input.cwd).split(/[\\/]/)[1] : '');
+  // who: a terminal subagent's name, else the dashboard run's person (opts.who, set by the office: a ChatGPT
+  // run may send commands from another folder than its own), else the staff folder the command runs in
+  const staffId = input.agent_type || opts.who || ((P.relative(office.dir, input.cwd || office.dir).split(/[\\/]/)[0] === 'staff') ? P.relative(office.dir, input.cwd).split(/[\\/]/)[1] : '');
   const staff = (office.staff || []).find((s) => s.id === staffId);
   const name = staff ? staff.name : 'The PA';
   const no = (reason) => ({ decision: opts.chat ? 'deny' : null, reason });
@@ -186,7 +188,7 @@ function decideAction(input, office, grants, opts = {}) {
   if ((addon.always || []).includes(short)) return { decision: 'allow', reason: `The boss set "${rule.label}" to Always allow.` };
   const P = (opts.win ?? process.platform === 'win32') ? path.win32 : path.posix;
   const rel = P.relative(office.dir, input.cwd || office.dir).split(/[\\/]/);
-  const staffId = input.agent_type || (rel[0] === 'staff' ? rel[1] : '');
+  const staffId = input.agent_type || opts.who || (rel[0] === 'staff' ? rel[1] : '');
   const g = staffId && (grants || []).find((x) => !x.used && x.from === staffId && x.tool === short && sameInput(x.input, input.tool_input || {}));
   if (g) return { decision: 'allow', reason: `The boss approved this (${g.action || short}).`, grant: g.id };
   const how = `Write an approval file in approvals/ with "tool: ${short}" and "input: <the exact JSON you will call it with, on one line>", then stop. When the boss approves, the office runs it for you.`;
@@ -221,6 +223,8 @@ if (require.main === module) {
     if (input.cwd) input.cwd = real(input.cwd);
     try { office = JSON.parse(fs.readFileSync(path.join(dir, 'office.json'), 'utf8')); } catch { return; }
     const provider = process.env.AI_OFFICE_PROVIDER || 'claude', run = process.env.AI_OFFICE_RUN || '';
+    // the person a dashboard run belongs to (pa or a staff id), set by the office when it starts the run
+    const who = process.env.AI_OFFICE_CHAT === '1' && /^[\w-]{1,60}$/.test(process.env.AI_OFFICE_WHO || '') ? process.env.AI_OFFICE_WHO : undefined;
     const say = (r) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.decision, permissionDecisionReason: r.reason } }));
     // the office checks this mark for a Codex run: no mark means the guard is not running, and the run is stopped
     if (provider !== 'claude' && /^[a-z0-9]{1,40}$/.test(run)) { try { fs.mkdirSync(path.join(dir, '.office', 'runs'), { recursive: true }); fs.writeFileSync(path.join(dir, '.office', 'runs', `${run}.guard`), ''); } catch { /* no mark: the run stops */ } }
@@ -228,7 +232,7 @@ if (require.main === module) {
     if (ASK_FIRST[input.tool_name]) {
       let grants = [];
       try { grants = JSON.parse(fs.readFileSync(path.join(dir, '.office', 'grants.json'), 'utf8')); } catch { /* none yet */ }
-      const r = decideAction(input, { ...office, dir }, grants, { chat: process.env.AI_OFFICE_CHAT === '1' });
+      const r = decideAction(input, { ...office, dir }, grants, { chat: process.env.AI_OFFICE_CHAT === '1', who });
       if (!r || !r.decision) return; // terminal: Claude Code asks the boss as usual
       if (r.grant) useGrant(dir, r.grant);
       return say(r);
@@ -245,7 +249,7 @@ if (require.main === module) {
     const o = { ...office, dir, linked: linked.map(real) };
     try {
       if (input.tool_name === 'apply_patch') return say(decidePatch(input, o));
-      const r = decide(input, o, { chat: process.env.AI_OFFICE_CHAT === '1', provider });
+      const r = decide(input, o, { chat: process.env.AI_OFFICE_CHAT === '1', provider, who });
       if (!r.decision) return; // terminal: Claude Code asks the boss as usual
       say(r);
     } catch (e) { // never let a step through unchecked from the dashboard

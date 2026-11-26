@@ -14,7 +14,7 @@ const fake = `
 const fs = require('fs'), path = require('path');
 let msg = ''; process.stdin.on('data', (d) => { msg += d; }).on('end', () => {
   const a = process.argv.slice(2);
-  fs.appendFileSync(${JSON.stringify(path.join(tmp, 'calls.jsonl'))}, JSON.stringify({ args: a, cwd: process.cwd(), msg, run: process.env.AI_OFFICE_RUN, prov: process.env.AI_OFFICE_PROVIDER }) + '\\n');
+  fs.appendFileSync(${JSON.stringify(path.join(tmp, 'calls.jsonl'))}, JSON.stringify({ args: a, cwd: process.cwd(), msg, run: process.env.AI_OFFICE_RUN, prov: process.env.AI_OFFICE_PROVIDER, who: process.env.AI_OFFICE_WHO }) + '\\n');
   const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
   if (a.includes('resume') && a[a.indexOf('resume') + 1] === 'gone') { process.stderr.write('Error: thread/resume failed: no rollout found for thread id gone'); process.exit(1); }
   out({ type: 'thread.started', thread_id: 'th-1' });
@@ -80,7 +80,7 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.deepStrictEqual(m.map((x) => [x.from, x.text]), [['boss', 'Hello from the boss'], ['pa', 'Baik boss, from ChatGPT.']]);
     const c = calls()[0];
     assert.strictEqual(c.msg, 'Hello from the boss');
-    assert.strictEqual(c.prov, 'codex'); assert.match(c.run, /^[a-z0-9]+$/);
+    assert.strictEqual(c.prov, 'codex'); assert.strictEqual(c.who, 'pa'); assert.match(c.run, /^[a-z0-9]+$/);
     assert.strictEqual(path.resolve(c.cwd), path.resolve(dir));
     assert.deepStrictEqual(c.args.slice(0, 2), ['exec', '--json']);
     assert.strictEqual(c.args[c.args.length - 1], '-');
@@ -203,6 +203,27 @@ const test = async (name, fn) => { await fn(); n++; console.log(`ok ${n} ${name}
     assert.strictEqual(d('git status'), 'deny', 'the PA still runs no other commands');
     // without the Codex flag (Claude Code) reading by shell stays off for the PA
     assert.strictEqual(guard.decide({ tool_name: 'Bash', tool_input: { command: 'Get-Content OFFICE.md' }, cwd: dir }, office, { chat: true }).decision, 'deny');
+  });
+
+  await test('guard (real hook script): a ChatGPT staff is known by the run, even when the command runs from the office folder', () => {
+    const { spawnSync } = require('child_process');
+    const f = path.join(dir, 'office.json'), c = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const staff = c.staff[1]; staff.commands = ['git']; fs.writeFileSync(f, JSON.stringify(c, null, 2));
+    const hook = (who, cwd, command = 'git status') => {
+      const r = spawnSync(process.execPath, [path.join(dir, '.office', 'guard.js')], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd }), encoding: 'utf8',
+        env: { ...process.env, AI_OFFICE_CHAT: '1', AI_OFFICE_PROVIDER: 'codex', AI_OFFICE_RUN: 'w1', AI_OFFICE_WHO: who } });
+      return JSON.parse(r.stdout).hookSpecificOutput.permissionDecision;
+    };
+    // what Codex did in a real office: workdir set to the office folder, not staff/<id>
+    assert.strictEqual(hook(staff.id, dir), 'allow');
+    assert.strictEqual(hook(staff.id, path.join(dir, 'staff', staff.id)), 'allow');
+    assert.strictEqual(hook(staff.id, dir, 'git push'), 'deny');
+    // the manager stays the manager, even from a staff folder
+    assert.strictEqual(hook('pa', path.join(dir, 'staff', staff.id)), 'deny');
+    // another staff without git cannot borrow a colleague's folder
+    assert.strictEqual(hook(c.staff[0].id, path.join(dir, 'staff', staff.id)), 'deny');
+    // a bad name is ignored (falls back to the folder)
+    assert.strictEqual(hook('../x', dir), 'deny');
   });
 
   await test('guard (Codex): file edits only inside, never the office\'s own files', () => {
